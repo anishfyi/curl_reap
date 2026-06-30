@@ -117,10 +117,13 @@ print(len(items), "items reaped")
 - `Selector` / `SelectorList`: `.css`, `.css_first`, `.xpath`, `.find_by_text`, `.find_similar`, `.save`, `.re`, `.text`, `.attr`.
 - `reap.Spider`, `reap.Request`, `reap.run(spider, ...)`, `reap.Reaper(...)`.
 - Pipelines: `DedupPipeline`, `JsonLinesPipeline`, `CsvPipeline`, or subclass `Pipeline`.
+- `reap.Geocoder().geocode(name, area, city, country)`: turn a name or address into coordinates with a precision label (`name`, `district`, or `city`), cached and rate limited.
 
-## Responsible use
+## Legal and acceptable use
 
-`curl_reap` impersonates a real browser at the TLS level, which is exactly what a normal browser does. It does **not** ship a challenge solver and it will not break CAPTCHAs or anti-bot walls (Cloudflare challenges, DataDome, PerimeterX, and similar). If a site has deliberately put up an access-control wall, that is a signal to stop. Respect robots.txt and each site's terms, throttle your crawls, and only collect data you are allowed to collect.
+`curl_reap` impersonates a real browser at the TLS level, which is what a normal browser does. It does **not** solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services (Cloudflare, DataDome, PerimeterX, Akamai). If a site is actively blocking you, that block is the line to respect. You are responsible for checking robots.txt and each site's terms, not circumventing technical access controls, handling personal data lawfully (GDPR / CCPA), and respecting copyright. Provided under MIT, "as is", with no warranty.
+
+Full notice and your responsibilities as a user: **[LEGAL.md](LEGAL.md)**.
 
 ## License
 

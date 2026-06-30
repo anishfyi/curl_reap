@@ -29,13 +29,14 @@ Quick start:
 """
 from .adaptive import relocate, save, signature, similarity
 from .engine import Reaper, run
+from .geocode import Geocoder, geocode
 from .http import Response, Session, fetch, get, post
 from .parser import Selector, SelectorList
 from .pipelines import CsvPipeline, DedupPipeline, JsonLinesPipeline, Pipeline
 from .spider import Request, Spider
 from .throttle import AutoThrottle
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "get", "post", "fetch", "Session", "Response",
@@ -43,5 +44,6 @@ __all__ = [
     "Spider", "Request", "Reaper", "run",
     "Pipeline", "DedupPipeline", "JsonLinesPipeline", "CsvPipeline", "AutoThrottle",
     "signature", "similarity", "save", "relocate",
+    "Geocoder", "geocode",
     "__version__",
 ]
