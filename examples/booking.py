@@ -33,18 +33,20 @@ class Booking(reap.Spider):
         if page.status != 200:           # 202 wall or anything non-open: skip honestly
             return
         city = page.meta.get("city", "?")
-        titles = page.css('[data-testid="title"]::text').getall()
-        links = page.css('a[data-testid="title-link"]::attr(href)').getall()
-        if not links:
-            links = page.css('a[href*="/hotel/"]::attr(href)').getall()
+        # tight per-card alignment: climb from each title to the card that holds the
+        # listing link, so name and url always belong to the same card.
+        cards = page.css('[data-testid="title"]')
         prices = page.re(r"Price from.{0,160}?(?:₹|US\$|£|€)\s?([\d,]{3,})")
-        for i, title in enumerate(titles):
-            href = links[i].split("?")[0] if i < len(links) else None
-            if href and not href.startswith("http"):
-                href = "https://www.booking.com" + href
+        for i, t in enumerate(cards):
+            card = t.xpath("ancestor::div[.//a[contains(@href,'/hotel/')]][1]").get()
+            href = card.css('a[href*="/hotel/"]::attr(href)').get() if card else None
+            if href:
+                href = href.split("?")[0]
+                if not href.startswith("http"):
+                    href = "https://www.booking.com" + href
             yield {
                 "city": city,
-                "name": title.strip()[:90],
+                "name": t.text[:90],
                 "price_from": prices[i] if i < len(prices) else None,
                 "url": href,
                 "source": "Booking.com",
