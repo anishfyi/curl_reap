@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "curl_reap"
-version = "0.1.0"
+version = "0.1.1"
 description = "Reap the web: browser-grade TLS impersonation, self-healing selectors, and a concurrent crawl engine in one library."
 readme = "README.md"
 requires-python = ">=3.9"

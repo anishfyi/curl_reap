@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="curl_reap" width="420" />
+  <img src="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/logo.png" alt="curl_reap" width="440" />
 </p>
 
 <p align="center"><b>Reap the web.</b> Browser-grade TLS impersonation, self-healing selectors, and a concurrent crawl engine, in one small library.</p>

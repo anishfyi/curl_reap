@@ -35,7 +35,7 @@ from .pipelines import CsvPipeline, DedupPipeline, JsonLinesPipeline, Pipeline
 from .spider import Request, Spider
 from .throttle import AutoThrottle
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "get", "post", "fetch", "Session", "Response",
