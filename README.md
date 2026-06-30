@@ -8,7 +8,22 @@
   <code>pip install curl_reap</code>
 </p>
 
+<p align="center">
+  <a href="https://anishfyi.github.io/curl_reap/"><b>Documentation</b></a>
+  &nbsp;&middot;&nbsp; <a href="https://pypi.org/project/curl-reap/">PyPI</a>
+  &nbsp;&middot;&nbsp; <a href="https://github.com/anishfyi/curl_reap">Source</a>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/curl-reap/"><img src="https://img.shields.io/pypi/v/curl-reap?color=C9871A&label=pypi" alt="PyPI version"></a>
+  <img src="https://img.shields.io/pypi/pyversions/curl-reap?color=C9871A" alt="Python versions">
+  <img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT license">
+  <a href="https://anishfyi.github.io/curl_reap/"><img src="https://img.shields.io/badge/docs-curl__reap-C9871A" alt="Docs"></a>
+</p>
+
 ---
+
+> Full documentation with deep API reference and examples: **https://anishfyi.github.io/curl_reap/**
 
 ## Why
 

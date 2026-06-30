@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>curl_reap docs - reap the web</title>
+<meta name="description" content="Documentation for curl_reap: browser-grade TLS impersonation, self-healing selectors, and a concurrent crawl engine in one Python library." />
+<link rel="icon" href="logo.svg" type="image/svg+xml" />
+<meta property="og:title" content="curl_reap docs" />
+<meta property="og:description" content="Browser-grade TLS impersonation, self-healing selectors, and a concurrent crawl engine in one Python library." />
+<meta property="og:image" content="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<style>
+  :root{
+    --gold:#C9871A; --gold-soft:#f3e6c8; --gold-bg:#fbf5e8;
+    --ink:#1c1a16; --muted:#6b6358; --faint:#9a9085; --line:#e7e0d4;
+    --cream:#faf8f3; --card:#ffffff; --code-bg:#1e1b16;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;scroll-padding-top:84px}
+  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--cream);line-height:1.6;font-size:15.5px}
+  a{color:var(--gold);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.86em}
+  [x-cloak]{display:none!important}
+
+  /* top bar */
+  header{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px;
+    padding:13px clamp(16px,4vw,32px);background:rgba(250,248,243,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  header .brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:17px;color:var(--ink)}
+  header .brand img{height:26px}
+  header .brand b{color:var(--gold)}
+  header .grow{flex:1}
+  header .hlink{font-weight:600;font-size:14px;color:var(--muted)}
+  header .hlink:hover{color:var(--ink);text-decoration:none}
+  header .pill{background:var(--ink);color:#fff;padding:8px 15px;border-radius:9px;font-weight:600;font-size:13.5px}
+  header .pill:hover{text-decoration:none;opacity:.9}
+  .menu-btn{display:none;background:none;border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:16px}
+
+  .layout{display:grid;grid-template-columns:248px minmax(0,1fr);gap:0;max-width:1180px;margin:0 auto}
+
+  /* sidebar */
+  nav.side{position:sticky;top:57px;align-self:start;height:calc(100svh - 57px);overflow-y:auto;
+    padding:24px 14px 60px;border-right:1px solid var(--line)}
+  nav.side .grp{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:18px 10px 6px}
+  nav.side a{display:block;padding:6px 10px;border-radius:8px;color:var(--muted);font-weight:500;font-size:14px}
+  nav.side a:hover{background:var(--gold-bg);color:var(--ink);text-decoration:none}
+  nav.side a.on{background:var(--gold-bg);color:var(--gold);font-weight:600}
+
+  main{padding:40px clamp(18px,4vw,56px) 120px;min-width:0}
+  section{scroll-margin-top:80px;margin-bottom:52px}
+  h1{font-size:clamp(30px,5vw,44px);line-height:1.08;letter-spacing:-.02em;margin-bottom:14px}
+  h2{font-size:26px;letter-spacing:-.01em;margin:8px 0 14px;padding-top:8px}
+  h3{font-size:18px;margin:26px 0 8px;color:var(--ink)}
+  p{margin:0 0 14px;color:#322e28}
+  .lead{font-size:18px;color:var(--muted);max-width:62ch;margin-bottom:22px}
+  ul{margin:0 0 14px 20px}li{margin:5px 0}
+  .pill-row{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 8px}
+  .cta{background:var(--gold);color:#fff;padding:11px 20px;border-radius:10px;font-weight:600}
+  .cta:hover{text-decoration:none;opacity:.92}
+  .cta.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+
+  /* code blocks */
+  .code{position:relative;margin:14px 0 20px;border-radius:12px;overflow:hidden;border:1px solid #2a261f}
+  .code pre{margin:0;padding:16px 18px;background:var(--code-bg);overflow-x:auto}
+  .code pre code{font-size:13.5px;line-height:1.65;background:none;padding:0}
+  .code .cp{position:absolute;top:8px;right:8px;background:#2f2a22;color:#cbb994;border:none;border-radius:7px;
+    padding:5px 9px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif}
+  .code .cp:hover{background:#3b352b;color:#fff}
+  code.inline{background:var(--gold-bg);color:#9a6a12;padding:1.5px 6px;border-radius:5px}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:600;color:var(--muted);background:var(--gold-bg)}
+  td code{color:#9a6a12}
+  .yes{color:#1f9d57;font-weight:700}.no{color:#c0392b}
+
+  .note{background:var(--gold-bg);border:1px solid var(--gold-soft);border-left:3px solid var(--gold);
+    border-radius:10px;padding:14px 16px;margin:16px 0;font-size:14.5px}
+  .note b{color:#9a6a12}
+  .api{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;background:var(--card)}
+  .api .sig{font-family:'JetBrains Mono',monospace;font-size:13.5px;color:var(--ink);font-weight:600;margin-bottom:8px;word-break:break-word}
+  .api .sig b{color:var(--gold)}
+  footer{border-top:1px solid var(--line);padding:30px clamp(18px,4vw,56px);color:var(--faint);font-size:13.5px;text-align:center}
+
+  @media(max-width:860px){
+    .layout{grid-template-columns:1fr}
+    nav.side{position:fixed;top:0;left:0;height:100svh;width:280px;background:var(--cream);z-index:60;
+      transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 40px rgba(0,0,0,.15);padding-top:70px}
+    nav.side.open{transform:none}
+    .menu-btn{display:inline-block}
+    .scrim{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:55}
+  }
+</style>
+</head>
+<body x-data="docs()" x-init="init()">
+
+<header>
+  <button class="menu-btn" @click="menu=!menu" aria-label="Menu">&#9776;</button>
+  <a class="brand" href="#intro"><img src="logo-mark.svg" alt=""/><span>curl<b>_reap</b></span></a>
+  <span class="grow"></span>
+  <a class="hlink" href="https://pypi.org/project/curl-reap/" target="_blank" rel="noopener">PyPI</a>
+  <a class="pill" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">GitHub</a>
+</header>
+
+<div class="scrim" x-show="menu" x-cloak @click="menu=false"></div>
+
+<div class="layout">
+  <nav class="side" :class="{open:menu}" @click="menu=false">
+    <div class="grp">Get started</div>
+    <a href="#intro">Overview</a>
+    <a href="#install">Installation</a>
+    <a href="#quickstart">Quick start</a>
+    <div class="grp">Core</div>
+    <a href="#transport">Transport &amp; impersonation</a>
+    <a href="#selectors">Selectors &amp; parsing</a>
+    <a href="#healing">Self-healing selectors</a>
+    <a href="#finders">Finders</a>
+    <div class="grp">Crawl</div>
+    <a href="#engine">Crawl engine</a>
+    <a href="#throttle">AutoThrottle</a>
+    <a href="#pipelines">Pipelines</a>
+    <div class="grp">Reference</div>
+    <a href="#api">API reference</a>
+    <a href="#compare">Comparison</a>
+    <a href="#responsible">Responsible use</a>
+  </nav>
+
+  <main>
+    <section id="intro">
+      <h1>Reap the web.</h1>
+      <p class="lead">curl_reap is one small Python library that puts three scraping superpowers behind a single friendly API: browser-grade TLS impersonation, self-healing selectors that survive markup changes, and a concurrent crawl engine.</p>
+      <div class="pill-row">
+        <a class="cta" href="#quickstart">Quick start</a>
+        <a class="cta ghost" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">Star on GitHub</a>
+      </div>
+      <table>
+        <tr><th></th><th>curl_cffi</th><th>Scrapy</th><th>Scrapling</th><th>curl_reap</th></tr>
+        <tr><td>Real browser TLS / JA3</td><td class="yes">yes</td><td class="no">no</td><td>partial</td><td class="yes">yes</td></tr>
+        <tr><td>Parser built in</td><td class="no">no</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+        <tr><td>Self-healing selectors</td><td class="no">no</td><td class="no">no</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+        <tr><td>Concurrent crawl engine</td><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="yes">yes</td></tr>
+        <tr><td>AutoThrottle, retries, pipelines</td><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="yes">yes</td></tr>
+      </table>
+    </section>
+
+    <section id="install">
+      <h2>Installation</h2>
+      <p>Requires Python 3.9 or newer. It pulls in <code class="inline">curl_cffi</code>, <code class="inline">lxml</code>, and <code class="inline">cssselect</code>.</p>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-bash" x-ref="c">pip install curl_reap</code></pre></div>
+    </section>
+
+    <section id="quickstart">
+      <h2>Quick start</h2>
+      <h3>Fetch and parse</h3>
+      <p>A one-shot fetch parses like parsel, but the request carries a genuine Chrome fingerprint at the TLS layer.</p>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">import curl_reap as reap
+
+page = reap.get("https://quotes.toscrape.com", impersonate="chrome124")
+print(page.css("span.text::text").getall())
+print(page.css_first("small.author::text"))</code></pre></div>
+
+      <h3>Crawl with concurrency</h3>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">import curl_reap as reap
+
+class Quotes(reap.Spider):
+    start_urls = ["https://quotes.toscrape.com"]
+
+    def parse(self, page):
+        for q in page.css("div.quote"):
+            yield {"text": q.css_first("span.text::text"),
+                   "author": q.css_first("small.author::text")}
+        nxt = page.css_first("li.next a::attr(href)")
+        if nxt:
+            yield reap.Request("https://quotes.toscrape.com" + nxt, self.parse)
+
+items = reap.run(Quotes, concurrency=8, throttle=True)
+print(len(items), "items reaped")</code></pre></div>
+    </section>
+
+    <section id="transport">
+      <h2>Transport and impersonation</h2>
+      <p>Every request goes out with a real browser TLS/JA3 and HTTP2 fingerprint (powered by curl_cffi). This is what gets you past fingerprint-based bot detection that blocks stock Python clients.</p>
+      <div class="api">
+        <div class="sig">reap.<b>get</b>(url, impersonate="chrome124", headers=None, timeout=30, retries=2, **kw) -> Response</div>
+        <p>One-shot GET on a shared impersonating session. <code class="inline">reap.post</code> and <code class="inline">reap.fetch</code> work the same way. Any extra keyword is passed straight to curl_cffi (params, data, json, proxies, cookies, and so on).</p>
+      </div>
+      <div class="api">
+        <div class="sig">reap.<b>Session</b>(impersonate="chrome124", headers=None, timeout=30, retries=2, proxies=None, **kw)</div>
+        <p>A reusable client that keeps cookies and connection pooling. Methods: <code class="inline">.get(url, **kw)</code>, <code class="inline">.post(url, **kw)</code>, <code class="inline">.request(method, url, **kw)</code>, <code class="inline">.close()</code>.</p>
+      </div>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">from curl_reap import Session
+
+s = Session(impersonate="safari17_0", headers={"Accept-Language": "en"}, retries=3)
+r = s.get("https://httpbin.org/headers")
+print(r.status, r.ok, r.url)
+print(r.json())
+s.close()</code></pre></div>
+      <h3>The Response object</h3>
+      <p>A <code class="inline">Response</code> behaves like a page: <code class="inline">.css</code> / <code class="inline">.xpath</code> / <code class="inline">.find_by_text</code> pass through to a parser. Attributes: <code class="inline">.status</code>, <code class="inline">.ok</code>, <code class="inline">.url</code>, <code class="inline">.headers</code>, <code class="inline">.text</code>, <code class="inline">.content</code>, <code class="inline">.meta</code>. Methods: <code class="inline">.selector()</code>, <code class="inline">.json()</code>.</p>
+      <div class="note">Available <b>impersonate</b> targets follow curl_cffi: chrome99 through chrome124, edge99/101, safari15/17, and more. Pick a recent one (chrome124) for the broadest coverage.</div>
+    </section>
+
+    <section id="selectors">
+      <h2>Selectors and parsing</h2>
+      <p>The parser is built on lxml with parsel-style ergonomics. CSS supports the <code class="inline">::text</code> and <code class="inline">::attr(name)</code> pseudo elements.</p>
+      <div class="api">
+        <div class="sig"><b>Selector</b>.css(query, auto_match=False, identifier=None, storage=None) -> SelectorList</div>
+        <p>Select by CSS. Returns a <code class="inline">SelectorList</code> of child Selectors, or of strings when the query ends in <code class="inline">::text</code> or <code class="inline">::attr(...)</code>.</p>
+      </div>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">page.css("h1::text").get()              # first match, or None
+page.css("a.item::attr(href)").getall() # every href as a list
+page.css("div.card")                    # SelectorList of element Selectors
+page.css_first("span.price::text", default="n/a")
+
+# nested selection
+for card in page.css("div.card"):
+    title = card.css_first(".title::text")
+    link  = card.css_first("a::attr(href)")</code></pre></div>
+      <h3>XPath, regex, and values</h3>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">page.xpath("//div[@class='quote']/span/text()").getall()
+page.re(r"price:\s*([\d.]+)")
+
+el = page.css_first("a.author")
+el.text          # text content, stripped
+el.attr("href")  # one attribute
+el.attrib        # dict of all attributes
+el.html          # outer HTML of the element</code></pre></div>
+      <h3>SelectorList helpers</h3>
+      <p><code class="inline">.get(default=None)</code>, <code class="inline">.getall()</code>, <code class="inline">.text()</code>, <code class="inline">.attr(name)</code>, and <code class="inline">.css(query)</code> (mapped across every element in the list).</p>
+    </section>
+
+    <section id="healing">
+      <h2>Self-healing selectors</h2>
+      <p>The biggest maintenance cost in scraping is selectors breaking when a site renames a class or reshuffles its DOM. curl_reap can save a structural <em>signature</em> of an element once, then relocate it later by scoring every node against that signature.</p>
+      <div class="api">
+        <div class="sig"><b>Selector</b>.save(identifier, storage=None)</div>
+        <p>Persist this element's signature (tag, classes, id, attributes, text, DOM path, position) to a small JSON store. Default store: <code class="inline">.reap_selectors.json</code>.</p>
+      </div>
+      <div class="api">
+        <div class="sig"><b>Selector</b>.css(query, auto_match=True, identifier="...", storage=None)</div>
+        <p>If the normal query finds nothing and <code class="inline">auto_match=True</code>, curl_reap relocates the element from the saved signature for that identifier.</p>
+      </div>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">import curl_reap as reap
+
+# 1. remember the button once, from today's markup
+page = reap.get("https://shop.example.com/item/42")
+page.css_first("a.buy-btn").save("buy_button")
+
+# 2. weeks later the class is renamed to "purchase-cta".
+#    the old selector misses, but auto_match relocates it:
+later = reap.get("https://shop.example.com/item/99")
+btn = later.css_first("a.buy-btn", auto_match=True, identifier="buy_button")
+print(btn.attr("href"))   # found anyway</code></pre></div>
+      <h3>Under the hood</h3>
+      <p>Exposed for advanced use: <code class="inline">reap.signature(element)</code>, <code class="inline">reap.similarity(sig_a, sig_b)</code> (returns 0..1), <code class="inline">reap.save(id, element, storage)</code>, and <code class="inline">reap.relocate(id, tree, storage, threshold=0.6)</code>. Matching weights tag, class set (Jaccard), id, attributes, text, and DOM path.</p>
+    </section>
+
+    <section id="finders">
+      <h2>Finders</h2>
+      <div class="api">
+        <div class="sig"><b>Selector</b>.find_by_text(text, partial=True, first=False) -> SelectorList</div>
+        <p>Find elements whose text contains (or equals, if <code class="inline">partial=False</code>) the given string.</p>
+      </div>
+      <div class="api">
+        <div class="sig"><b>Selector</b>.find_similar(sample, threshold=0.6, limit=None) -> SelectorList</div>
+        <p>Given one element, return others that are structurally similar. Great for grabbing every repeated card or row without writing a brittle class selector.</p>
+      </div>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">signin = page.find_by_text("Sign in", first=True).get()
+
+first_card = page.css_first("div.card")
+all_cards  = page.find_similar(first_card)   # every card like it
+print(len(all_cards))</code></pre></div>
+    </section>
+
+    <section id="engine">
+      <h2>Crawl engine</h2>
+      <p>A small concurrent engine. A <code class="inline">Spider</code> yields items (dicts) and more <code class="inline">Request</code> objects; the engine handles concurrency, dedup, retries, AutoThrottle, and pipelines.</p>
+      <div class="api">
+        <div class="sig">class <b>Spider</b>: name, start_urls, def parse(self, page)</div>
+        <p>Set <code class="inline">start_urls</code> and implement <code class="inline">parse</code>. Override <code class="inline">start()</code> if you need custom seed requests.</p>
+      </div>
+      <div class="api">
+        <div class="sig"><b>Request</b>(url, callback=None, method="GET", meta=None, **kw)</div>
+        <p>A pending fetch plus its parse callback. <code class="inline">meta</code> is carried onto the Response. Extra kwargs go to the transport.</p>
+      </div>
+      <div class="api">
+        <div class="sig">reap.<b>run</b>(spider, concurrency=8, retries=2, throttle=True, delay=0.0, impersonate="chrome124", pipelines=None, dedup=True, on_item=None, max_pages=None) -> list</div>
+        <p>Run a Spider (class or instance) to completion and return the scraped items. <code class="inline">reap.Reaper(...)</code> is the same with a <code class="inline">.run()</code> method and a <code class="inline">.stats</code> dict (requests, items, errors, dropped).</p>
+      </div>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">import curl_reap as reap
+
+reaper = reap.Reaper(MySpider(), concurrency=12, throttle=True,
+                     on_item=lambda it: print("got", it["title"]))
+items = reaper.run()
+print(reaper.stats)   # {'requests': 40, 'items': 380, 'errors': 0, 'dropped': 4}</code></pre></div>
+    </section>
+
+    <section id="throttle">
+      <h2>AutoThrottle</h2>
+      <p>With <code class="inline">throttle=True</code>, the engine watches response latency and adapts a per-request delay so the crawl stays polite and avoids IP bans, the way Scrapy's AutoThrottle does. Target delay is roughly average latency divided by your concurrency. Set <code class="inline">delay=</code> for a fixed floor or <code class="inline">throttle=False</code> to go full speed.</p>
+    </section>
+
+    <section id="pipelines">
+      <h2>Pipelines</h2>
+      <p>Each scraped item flows through a chain. A pipeline that returns <code class="inline">None</code> drops the item.</p>
+      <ul>
+        <li><code class="inline">DedupPipeline(key=None)</code> drops duplicates (by a field, or the whole item). Added automatically unless you pass <code class="inline">dedup=False</code>.</li>
+        <li><code class="inline">JsonLinesPipeline(path)</code> streams items to a .jsonl file as they arrive.</li>
+        <li><code class="inline">CsvPipeline(path)</code> writes a CSV on close.</li>
+        <li>Subclass <code class="inline">Pipeline</code> and implement <code class="inline">open</code> / <code class="inline">process</code> / <code class="inline">close</code> for your own.</li>
+      </ul>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">from curl_reap import Pipeline, DedupPipeline, JsonLinesPipeline
+
+class PriceToFloat(Pipeline):
+    def process(self, item):
+        item["price"] = float(item["price"].strip("$"))
+        return item   # or return None to drop it
+
+reap.run(MySpider, pipelines=[
+    DedupPipeline(key="url"),
+    PriceToFloat(),
+    JsonLinesPipeline("out.jsonl"),
+])</code></pre></div>
+    </section>
+
+    <section id="api">
+      <h2>API reference</h2>
+      <table>
+        <tr><th>Symbol</th><th>What it does</th></tr>
+        <tr><td><code>reap.get / post / fetch</code></td><td>One-shot impersonating request, returns Response</td></tr>
+        <tr><td><code>reap.Session</code></td><td>Reusable client (cookies, pooling, retries)</td></tr>
+        <tr><td><code>reap.Response</code></td><td>Fetched page; css/xpath pass through, plus json()</td></tr>
+        <tr><td><code>reap.Selector</code></td><td>css, css_first, xpath, re, find_by_text, find_similar, save, text, attr, html</td></tr>
+        <tr><td><code>reap.SelectorList</code></td><td>get, getall, text, attr, css</td></tr>
+        <tr><td><code>reap.Spider</code></td><td>start_urls + parse; the crawl unit</td></tr>
+        <tr><td><code>reap.Request</code></td><td>url + callback + meta</td></tr>
+        <tr><td><code>reap.run / reap.Reaper</code></td><td>Run a spider with concurrency, throttle, pipelines</td></tr>
+        <tr><td><code>reap.Pipeline and friends</code></td><td>Dedup, JsonLines, Csv, or custom</td></tr>
+        <tr><td><code>reap.signature / similarity / save / relocate</code></td><td>Self-healing selector internals</td></tr>
+      </table>
+    </section>
+
+    <section id="compare">
+      <h2>Why not just use X</h2>
+      <p><b>curl_cffi</b> is the transport only: brilliant TLS impersonation, no parser, no crawl engine. curl_reap uses it underneath and adds the rest.</p>
+      <p><b>Scrapy</b> is a heavyweight framework with great orchestration, but its default downloader is TLS-fingerprinted and blocked by modern bot walls. curl_reap brings the impersonation into the engine.</p>
+      <p><b>Scrapling</b> pioneered self-healing selectors (the idea curl_reap borrows) and ships a stealth browser. curl_reap keeps the adaptive parsing and the lightweight footprint, without bundling a browser.</p>
+    </section>
+
+    <section id="responsible">
+      <h2>Responsible use</h2>
+      <p>curl_reap impersonates a real browser at the TLS layer, which is exactly what a normal browser does. It does <b>not</b> ship a challenge solver and will not break CAPTCHAs or anti-bot walls (Cloudflare challenges, DataDome, PerimeterX, and similar). If a site has deliberately put up an access-control wall, that is a signal to stop. Respect robots.txt and each site's terms, throttle your crawls, and only collect data you are allowed to collect.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  curl_reap is MIT licensed. Built with curl_cffi, lxml, and cssselect.
+  &nbsp;&middot;&nbsp; <a href="https://pypi.org/project/curl-reap/" target="_blank" rel="noopener">PyPI</a>
+  &nbsp;&middot;&nbsp; <a href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">GitHub</a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script>
+  function docs(){
+    return {
+      menu:false, active:"intro",
+      init(){
+        if(window.hljs){document.querySelectorAll("pre code").forEach(function(b){window.hljs.highlightElement(b);});}
+        var links=[].slice.call(document.querySelectorAll("nav.side a"));
+        var byId={}; links.forEach(function(a){byId[a.getAttribute("href").slice(1)]=a;});
+        var obs=new IntersectionObserver(function(es){
+          es.forEach(function(e){
+            if(e.isIntersecting){
+              links.forEach(function(a){a.classList.remove("on");});
+              var a=byId[e.target.id]; if(a)a.classList.add("on");
+            }
+          });
+        },{rootMargin:"-72px 0px -70% 0px"});
+        document.querySelectorAll("section[id]").forEach(function(s){obs.observe(s);});
+      }
+    };
+  }
+  function cp(){
+    return {
+      t:"Copy",
+      copy(el){
+        navigator.clipboard.writeText(el.textContent).then(()=>{var self=this;self.t="Copied";setTimeout(()=>{self.t="Copy";},1200);});
+      }
+    };
+  }
+</script>
+</body>
+</html>
