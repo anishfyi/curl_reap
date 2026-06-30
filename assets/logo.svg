@@ -1,0 +1,28 @@
+<svg width="520" height="170" viewBox="0 0 520 170" fill="none" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+  <defs>
+    <linearGradient id="blade" x1="20" y1="20" x2="120" y2="130" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F0C24B"/>
+      <stop offset="1" stop-color="#C9871A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- the reap mark: a sickle blade that curves like a curl -->
+  <g transform="translate(26,20)">
+    <!-- blade -->
+    <path d="M104 40 C 74 14, 26 30, 22 72 C 19 104, 44 124, 80 118"
+          stroke="url(#blade)" stroke-width="16" stroke-linecap="round" fill="none"/>
+    <!-- handle -->
+    <path d="M80 118 C 92 116, 104 122, 112 134"
+          stroke="#7A4E27" stroke-width="13" stroke-linecap="round" fill="none"/>
+    <!-- grain being reaped, inside the curl -->
+    <circle cx="112" cy="50" r="5.5" fill="#E7B23E"/>
+    <circle cx="120" cy="68" r="5" fill="#E7B23E"/>
+    <circle cx="105" cy="74" r="4.5" fill="#E7B23E"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="186" y="92" font-size="50" font-weight="700" letter-spacing="-1">
+    <tspan fill="#8A8178">curl_</tspan><tspan fill="#C9871A">reap</tspan>
+  </text>
+  <text x="188" y="124" font-size="18" font-weight="500" letter-spacing="3" fill="#9a9189">REAP THE WEB</text>
+</svg>
