@@ -82,6 +82,7 @@
   .note{background:var(--gold-bg);border:1px solid var(--gold-soft);border-left:3px solid var(--gold);
     border-radius:10px;padding:14px 16px;margin:16px 0;font-size:14.5px}
   .note b{color:#9a6a12}
+  .note.legal{border:1.5px solid var(--gold);border-left-width:5px;background:#fdf3e0;font-size:15px;line-height:1.55}
   .api{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;background:var(--card)}
   .api .sig{font-family:'JetBrains Mono',monospace;font-size:13.5px;color:var(--ink);font-weight:600;margin-bottom:8px;word-break:break-word}
   .api .sig b{color:var(--gold)}
@@ -120,6 +121,7 @@
     <a href="#selectors">Selectors &amp; parsing</a>
     <a href="#healing">Self-healing selectors</a>
     <a href="#finders">Finders</a>
+    <a href="#geocode">Geocoding</a>
     <div class="grp">Crawl</div>
     <a href="#engine">Crawl engine</a>
     <a href="#throttle">AutoThrottle</a>
@@ -127,7 +129,7 @@
     <div class="grp">Reference</div>
     <a href="#api">API reference</a>
     <a href="#compare">Comparison</a>
-    <a href="#responsible">Responsible use</a>
+    <a href="#responsible">Legal &amp; use</a>
   </nav>
 
   <main>
@@ -277,6 +279,29 @@ all_cards  = page.find_similar(first_card)   # every card like it
 print(len(all_cards))</code></pre></div>
     </section>
 
+    <section id="geocode">
+      <h2>Geocoding</h2>
+      <p>Many scraped listings carry a name and an area but no coordinates (the lat/lon lives behind a wall, or simply is not in the markup). A naive single query fails often: the full marketing name is not in the gazetteer, and a bare district query collapses every listing onto one centroid. The <code class="inline">Geocoder</code> fixes that with a cascade and tells you the precision.</p>
+      <div class="api">
+        <div class="sig">reap.<b>Geocoder</b>(min_interval=1.1, cache=".reap_geocode.json", min_importance=0.0)</div>
+        <p>A cascading geocoder over OpenStreetMap Nominatim, cached and rate limited.</p>
+      </div>
+      <div class="api">
+        <div class="sig"><b>Geocoder</b>.geocode(name=None, area=None, city=None, country=None) -> dict | None</div>
+        <p>Tries the raw name, then the name with generic suffixes stripped (Serviced Apartments, Aparthotel, by &lt;brand&gt;, ...), then the district, then the city. Stops at the first hit and returns <code class="inline">{lat, lon, precision, importance, display_name, query}</code>. <code class="inline">precision</code> is <code class="inline">"name"</code>, <code class="inline">"district"</code>, or <code class="inline">"city"</code>, so you keep the exact ones and drop coarse centroids.</p>
+      </div>
+      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">from curl_reap import Geocoder
+
+geo = Geocoder()
+hit = geo.geocode(name="Chelsea Cloisters Serviced Apartments",
+                  area="Kensington", city="London", country="United Kingdom")
+# {'lat': 51.49.., 'lon': -0.17.., 'precision': 'name', ...}
+
+if hit and hit["precision"] in ("name", "district"):
+    listing["lat"], listing["lon"] = hit["lat"], hit["lon"]   # keep accurate ones only</code></pre></div>
+      <div class="note">Be a good citizen: Nominatim asks for a real User-Agent and a max of one request per second. The Geocoder sets both by default and caches every lookup to disk, so repeat runs are instant.</div>
+    </section>
+
     <section id="engine">
       <h2>Crawl engine</h2>
       <p>A small concurrent engine. A <code class="inline">Spider</code> yields items (dicts) and more <code class="inline">Request</code> objects; the engine handles concurrency, dedup, retries, AutoThrottle, and pipelines.</p>
@@ -353,8 +378,19 @@ reap.run(MySpider, pipelines=[
     </section>
 
     <section id="responsible">
-      <h2>Responsible use</h2>
-      <p>curl_reap impersonates a real browser at the TLS layer, which is exactly what a normal browser does. It does <b>not</b> ship a challenge solver and will not break CAPTCHAs or anti-bot walls (Cloudflare challenges, DataDome, PerimeterX, and similar). If a site has deliberately put up an access-control wall, that is a signal to stop. Respect robots.txt and each site's terms, throttle your crawls, and only collect data you are allowed to collect.</p>
+      <h2>Legal and acceptable use</h2>
+      <div class="note legal">
+        <b>&#9888; Read this before you scrape.</b> curl_reap impersonates a real browser's TLS, which is what a normal browser does. It does <b>not</b> solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services (Cloudflare, DataDome, PerimeterX, Akamai Bot Manager). <b>If a site has deployed one of those and is actively blocking you, that block is the line the maintainers expect you to respect.</b>
+      </div>
+      <p>This is not legal advice. Web scraping legality depends on jurisdiction, what you scrape, and how. You are responsible for your use:</p>
+      <ul>
+        <li>Check <code class="inline">robots.txt</code> and read the target site's Terms of Service.</li>
+        <li>Do not circumvent technical access controls. Looking like a browser is one thing; defeating a bot-detection challenge a site deployed to block you raises CFAA / DMCA exposure in the US and analogous statutes elsewhere.</li>
+        <li>Handle personal data lawfully (GDPR, CCPA, or your local equivalent apply to you as the data controller).</li>
+        <li>Respect copyright: extract facts and data, do not mirror copyrighted text or media wholesale.</li>
+        <li>Throttle (<code class="inline">throttle=True</code>) and identify yourself with a descriptive User-Agent so operators can reach you.</li>
+      </ul>
+      <p>Provided under the MIT License, "as is", with no warranty and no liability. Full notice and details: <a href="https://github.com/anishfyi/curl_reap/blob/main/LEGAL.md" target="_blank" rel="noopener">LEGAL.md</a>.</p>
     </section>
   </main>
 </div>
