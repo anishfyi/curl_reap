@@ -33,7 +33,8 @@ dependencies = [
 dev = ["pytest>=7.0", "build>=1.0", "twine>=5.0"]
 
 [project.urls]
-Homepage = "https://github.com/anishfyi/curl_reap"
+Homepage = "https://anishfyi.github.io/curl_reap/"
+Documentation = "https://anishfyi.github.io/curl_reap/"
 Repository = "https://github.com/anishfyi/curl_reap"
 Issues = "https://github.com/anishfyi/curl_reap/issues"
 
