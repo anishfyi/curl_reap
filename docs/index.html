@@ -22,7 +22,7 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth;scroll-padding-top:84px}
-  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--cream);line-height:1.6;font-size:15.5px}
+  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--cream);line-height:1.6;font-size:15.5px;overflow-x:hidden}
   a{color:var(--gold);text-decoration:none}
   a:hover{text-decoration:underline}
   code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.86em}
@@ -51,7 +51,7 @@
   nav.side a:hover{background:var(--gold-bg);color:var(--ink);text-decoration:none}
   nav.side a.on{background:var(--gold-bg);color:var(--gold);font-weight:600}
 
-  main{padding:40px clamp(18px,4vw,56px) 120px;min-width:0}
+  main{padding:40px clamp(18px,4vw,56px) 120px;min-width:0;overflow-x:hidden}
   section{scroll-margin-top:80px;margin-bottom:52px}
   h1{font-size:clamp(30px,5vw,44px);line-height:1.08;letter-spacing:-.02em;margin-bottom:14px}
   h2{font-size:26px;letter-spacing:-.01em;margin:8px 0 14px;padding-top:8px}
@@ -73,8 +73,11 @@
   .code .cp:hover{background:#3b352b;color:#fff}
   code.inline{background:var(--gold-bg);color:#9a6a12;padding:1.5px 6px;border-radius:5px}
 
-  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:16px 0;border:1px solid var(--line);border-radius:10px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  .tablewrap table{margin:0}
   th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
   th{font-weight:600;color:var(--muted);background:var(--gold-bg)}
   td code{color:#9a6a12}
   .yes{color:#1f9d57;font-weight:700}.no{color:#c0392b}
@@ -95,6 +98,17 @@
     nav.side.open{transform:none}
     .menu-btn{display:inline-block}
     .scrim{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:55}
+  }
+  @media(max-width:560px){
+    main{padding:26px 16px 90px}
+    h1{font-size:32px}
+    .lead{font-size:16px}
+    h2{font-size:22px}
+    table{font-size:12px}
+    th,td{padding:7px 8px}
+    .api .sig{font-size:12.5px}
+    .pill-row{flex-direction:column}
+    .cta,.cta.ghost{text-align:center}
   }
 </style>
 </head>
@@ -140,14 +154,14 @@
         <a class="cta" href="#quickstart">Quick start</a>
         <a class="cta ghost" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">Star on GitHub</a>
       </div>
-      <table>
+      <div class="tablewrap"><table>
         <tr><th></th><th>curl_cffi</th><th>Scrapy</th><th>Scrapling</th><th>curl_reap</th></tr>
         <tr><td>Real browser TLS / JA3</td><td class="yes">yes</td><td class="no">no</td><td>partial</td><td class="yes">yes</td></tr>
         <tr><td>Parser built in</td><td class="no">no</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td></tr>
         <tr><td>Self-healing selectors</td><td class="no">no</td><td class="no">no</td><td class="yes">yes</td><td class="yes">yes</td></tr>
         <tr><td>Concurrent crawl engine</td><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="yes">yes</td></tr>
         <tr><td>AutoThrottle, retries, pipelines</td><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="yes">yes</td></tr>
-      </table>
+      </table></div>
     </section>
 
     <section id="install">
@@ -355,7 +369,7 @@ reap.run(MySpider, pipelines=[
 
     <section id="api">
       <h2>API reference</h2>
-      <table>
+      <div class="tablewrap"><table>
         <tr><th>Symbol</th><th>What it does</th></tr>
         <tr><td><code>reap.get / post / fetch</code></td><td>One-shot impersonating request, returns Response</td></tr>
         <tr><td><code>reap.Session</code></td><td>Reusable client (cookies, pooling, retries)</td></tr>
@@ -367,7 +381,7 @@ reap.run(MySpider, pipelines=[
         <tr><td><code>reap.run / reap.Reaper</code></td><td>Run a spider with concurrency, throttle, pipelines</td></tr>
         <tr><td><code>reap.Pipeline and friends</code></td><td>Dedup, JsonLines, Csv, or custom</td></tr>
         <tr><td><code>reap.signature / similarity / save / relocate</code></td><td>Self-healing selector internals</td></tr>
-      </table>
+      </table></div>
     </section>
 
     <section id="compare">
