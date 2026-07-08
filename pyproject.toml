@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "curl_reap"
-version = "0.1.2"
-description = "Reap the web: browser-grade TLS impersonation, self-healing selectors, and a concurrent crawl engine in one library."
+version = "0.2.0"
+description = "Reap the web: browser-grade TLS impersonation, self-healing selectors, structured extraction, and a concurrent crawl engine in one library."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -31,6 +31,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "build>=1.0", "twine>=5.0"]
+
+[project.scripts]
+reap = "curl_reap.cli:main"
 
 [project.urls]
 Homepage = "https://anishfyi.github.io/curl_reap/"
