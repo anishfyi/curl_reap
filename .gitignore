@@ -6,6 +6,8 @@ build/
 dist/
 .pytest_cache/
 .reap_selectors.json
+.reap_geocode.json
+.reap_cache/
 *.jsonl
 .venv/
 venv/

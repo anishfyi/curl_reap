@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/logo.png" alt="curl_reap" width="440" />
 </p>
 
-<p align="center"><b>Reap the web.</b> Browser-grade TLS impersonation, self-healing selectors, and a concurrent crawl engine, in one small library.</p>
+<p align="center"><b>Reap the web.</b> Browser-grade TLS impersonation, self-healing selectors, one-call structured extraction, and a concurrent crawl engine, in one small library.</p>
 
 <p align="center">
   <code>pip install curl_reap</code>
@@ -40,8 +40,12 @@ Modern scraping needs three things, and today you reach for three different tool
 | Real browser TLS / JA3 | yes | no | partial | **yes** |
 | Parser built in | no | yes | yes | **yes** |
 | Self-healing selectors | no | no | yes | **yes** |
+| Structured extraction (jsonld/meta/tables/markdown) | no | no | partial | **yes** |
 | Concurrent crawl engine | no | yes | no | **yes** |
 | AutoThrottle, retries, pipelines | no | yes | no | **yes** |
+| Fingerprint + proxy rotation | partial | no | no | **yes** |
+| Async client | yes | no | partial | **yes** |
+| Disk response cache | no | partial | no | **yes** |
 | One small dependency set | yes | no | no | **yes** |
 
 ## Install
@@ -64,6 +68,44 @@ print(page.css("span.text::text").getall())
 print(page.css_first("small.author::text"))
 ```
 
+## Structured extraction
+
+The answers most scrapes actually want are one method call away — no selectors required:
+
+```python
+page = reap.get("https://example.com/product/42")
+
+page.jsonld()      # all JSON-LD blocks as dicts (product/article/event data)
+page.meta_tags()   # {title, description, og:*, twitter:*, canonical, ...}
+page.links(internal_only=True)   # [{"url": ..., "text": ...}, ...] absolute urls
+page.images()      # [{"url": ..., "alt": ...}] (handles lazy data-src)
+page.tables()      # every <table> as list-of-rows
+page.markdown()    # readable page content as markdown — great for LLMs
+```
+
+## Resilience: retries, rotation, cache, async
+
+```python
+# smart retries with exponential backoff + jitter, honoring Retry-After;
+# retries 429/5xx automatically
+s = reap.Session(retry_policy=reap.RetryPolicy(retries=4, backoff=0.5))
+
+# rotate real browser fingerprints and proxies across requests
+s = reap.Session(rotate="random",
+                 proxy=["http://p1:8080", "http://p2:8080"])
+
+# disk cache: repeat GETs come from disk (fast dev loops, fewer hits)
+s = reap.Session(cache=reap.DiskCache(ttl=3600))
+r = s.get(url); r2 = s.get(url)   # r2.from_cache is True
+
+# async: the same impersonating fetch, awaitable
+import asyncio
+async def main():
+    async with reap.AsyncSession() as a:
+        pages = await asyncio.gather(*(a.get(u) for u in urls))
+asyncio.run(main())
+```
+
 ## Self-healing selectors
 
 Save an element once. Later, even if the site renames the class or moves the node, `auto_match` relocates it by structural signature:
@@ -82,7 +124,7 @@ Other finders: `page.find_by_text("Sign in")` and `page.find_similar(some_elemen
 
 ## Crawl at scale
 
-A `Spider` yields items (dicts) and more `Request` objects. The engine handles concurrency, AutoThrottle, retries, dedup, and pipelines:
+A `Spider` yields items (dicts) and more `Request` objects. A continuous scheduler keeps every worker busy (one slow page never stalls the crawl), with per-domain AutoThrottle, retries, dedup, depth/domain limits, optional `robots.txt`, and pipelines:
 
 ```python
 import curl_reap as reap
@@ -90,6 +132,8 @@ from curl_reap import JsonLinesPipeline
 
 class Quotes(reap.Spider):
     start_urls = ["https://quotes.toscrape.com"]
+    allowed_domains = ["quotes.toscrape.com"]   # confine the crawl
+    max_depth = 5
 
     def parse(self, page):
         for q in page.css("div.quote"):
@@ -99,24 +143,50 @@ class Quotes(reap.Spider):
             }
         nxt = page.css_first("li.next a::attr(href)")
         if nxt:
-            yield reap.Request("https://quotes.toscrape.com" + nxt, self.parse)
+            yield page.follow(nxt)                # resolves relative urls for you
 
 items = reap.run(
     Quotes,
     concurrency=8,
-    throttle=True,                       # AutoThrottle adapts to server latency
+    throttle=True,             # per-domain AutoThrottle, backs off on 429/503
+    respect_robots=True,       # opt-in robots.txt compliance
     pipelines=[JsonLinesPipeline("quotes.jsonl")],
 )
 print(len(items), "items reaped")
 ```
 
+Crawl straight from a sitemap with `SitemapSpider`:
+
+```python
+class Products(reap.SitemapSpider):
+    sitemap_urls = ["https://shop.example.com"]   # /sitemap.xml assumed
+    url_pattern = r"/product/"
+    def parse(self, page):
+        yield page.jsonld()[0]
+```
+
+## Command line
+
+Installing the package also installs a `reap` command:
+
+```bash
+reap get https://example.com                      # readable markdown
+reap get https://example.com --css "h1::text"     # extract with a selector
+reap get https://api.site.com/x --json            # pretty-print JSON
+reap meta https://example.com                      # title + og/twitter + JSON-LD
+reap links https://example.com --internal          # list same-domain links
+reap crawl https://quotes.toscrape.com --css "span.text::text" \
+     --max-pages 20 -o out.jsonl                    # crawl to a file (.jsonl/.csv/.db)
+```
+
 ## API at a glance
 
-- `reap.get(url, impersonate="chrome124", **kw)` and `reap.post(...)` return a `Response` you can `.css()` / `.xpath()` directly.
-- `reap.Session(impersonate=..., headers=..., retries=...)` for a reusable client.
-- `Selector` / `SelectorList`: `.css`, `.css_first`, `.xpath`, `.find_by_text`, `.find_similar`, `.save`, `.re`, `.text`, `.attr`.
-- `reap.Spider`, `reap.Request`, `reap.run(spider, ...)`, `reap.Reaper(...)`.
-- Pipelines: `DedupPipeline`, `JsonLinesPipeline`, `CsvPipeline`, or subclass `Pipeline`.
+- `reap.get(url, impersonate="chrome124", **kw)` and `reap.post(...)` return a `Response` you can `.css()` / `.xpath()` directly. `.status`, `.ok`, `.from_cache`, `.follow()`, `.raise_for_status()`.
+- `reap.Session(impersonate=..., headers=..., retry_policy=..., rotate=..., proxy=..., cache=...)` for a reusable client; `reap.AsyncSession` / `reap.aget` for async.
+- Structured extraction on any page: `.jsonld()`, `.meta_tags()`, `.links()`, `.images()`, `.tables()`, `.markdown()`.
+- `Selector` / `SelectorList`: `.css`, `.css_first`, `.xpath`, `.find_by_text`, `.find_similar`, `.save`, `.re`, `.re_first`, `.text`, `.attr`.
+- `reap.Spider`, `reap.SitemapSpider`, `reap.Request(url, priority=, errback=, dont_filter=)`, `reap.run(spider, ...)`, `reap.Reaper(...)`.
+- Pipelines: `DedupPipeline`, `JsonLinesPipeline`, `CsvPipeline`, `SqlitePipeline`, or subclass `Pipeline`.
 - `reap.Geocoder().geocode(name, area, city, country)`: turn a name or address into coordinates with a precision label (`name`, `district`, or `city`), cached and rate limited.
 
 ## Legal and acceptable use
