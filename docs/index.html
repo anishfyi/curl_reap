@@ -89,6 +89,15 @@
   .api{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;background:var(--card)}
   .api .sig{font-family:'JetBrains Mono',monospace;font-size:13.5px;color:var(--ink);font-weight:600;margin-bottom:8px;word-break:break-word}
   .api .sig b{color:var(--gold)}
+
+  /* sponsors */
+  .sponsors{margin:26px 0 8px;padding:16px 18px 18px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .sponsors .lbl{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:13px}
+  .sponsors .logos{display:flex;flex-wrap:wrap;align-items:center;gap:26px}
+  .sponsors a{display:inline-flex;align-items:center;opacity:.88;transition:opacity .15s}
+  .sponsors a:hover{opacity:1;text-decoration:none}
+  .sponsors img{height:40px;width:auto;display:block}
+
   footer{border-top:1px solid var(--line);padding:30px clamp(18px,4vw,56px);color:var(--faint);font-size:13.5px;text-align:center}
 
   @media(max-width:860px){
@@ -154,6 +163,16 @@
         <a class="cta" href="#quickstart">Quick start</a>
         <a class="cta ghost" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">Star on GitHub</a>
       </div>
+
+      <div class="sponsors">
+        <div class="lbl">Sponsors</div>
+        <div class="logos">
+          <a href="https://nodemaven.com/" target="_blank" rel="noopener sponsored" title="NodeMaven - residential and mobile proxies">
+            <img src="sponsors/nodemaven.svg" alt="NodeMaven" width="184" height="42" />
+          </a>
+        </div>
+      </div>
+
       <div class="tablewrap"><table>
         <tr><th></th><th>curl_cffi</th><th>Scrapy</th><th>Scrapling</th><th>curl_reap</th></tr>
         <tr><td>Real browser TLS / JA3</td><td class="yes">yes</td><td class="no">no</td><td>partial</td><td class="yes">yes</td></tr>
