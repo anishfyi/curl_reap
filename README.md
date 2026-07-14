@@ -21,18 +21,16 @@
   <a href="https://anishfyi.github.io/curl_reap/"><img src="https://img.shields.io/badge/docs-curl__reap-C9871A" alt="Docs"></a>
 </p>
 
-<p align="center"><sub><b>SPONSORS</b></sub></p>
+<h3 align="center">Sponsors</h3>
 
 <p align="center">
   <a href="https://nodemaven.com/" title="NodeMaven - residential and mobile proxies">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/sponsors/nodemaven-dark.svg">
-      <img src="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/sponsors/nodemaven-light.svg" alt="NodeMaven" height="26">
+      <img src="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/sponsors/nodemaven-light.svg" alt="NodeMaven" height="40">
     </picture>
   </a>
 </p>
-
-<p align="center"><sub>Sponsor <code>curl_reap</code> and put your logo here: <a href="https://github.com/anishfyi">get in touch</a>.</sub></p>
 
 ---
 
