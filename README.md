@@ -21,6 +21,8 @@
   <a href="https://anishfyi.github.io/curl_reap/"><img src="https://img.shields.io/badge/docs-curl__reap-C9871A" alt="Docs"></a>
 </p>
 
+---
+
 <h3 align="center">Sponsors</h3>
 
 <p align="center">
@@ -34,7 +36,7 @@
 
 ---
 
-> Full documentation with deep API reference and examples: **https://anishfyi.github.io/curl_reap/**
+Full documentation with deep API reference and examples: **https://anishfyi.github.io/curl_reap/**
 
 ## Why
 
