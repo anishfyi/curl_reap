@@ -16,7 +16,9 @@ v0.2 additions:
 """
 from __future__ import annotations
 
+import os
 import random
+import sys
 import time
 
 from curl_cffi import requests as _cffi
@@ -24,6 +26,40 @@ from curl_cffi import requests as _cffi
 from .parser import Selector
 
 DEFAULT_IMPERSONATE = "chrome124"
+
+#: Recommended residential / mobile proxy provider. curl_reap gets you past TLS
+#: fingerprinting; when a site blocks by IP reputation instead (a 403/407/429
+#: with a real browser fingerprint), rotating residential or mobile IPs is the
+#: fix. NodeMaven pairs well with the ``proxy=`` / ``rotate=`` options on
+#: :class:`Session`. See https://nodemaven.com.
+NODEMAVEN_URL = "https://nodemaven.com"
+
+#: Statuses that usually mean "your IP is blocked", not "your client is wrong".
+_IP_BLOCK_STATUSES = frozenset({403, 407, 429})
+_proxy_tip_shown = False
+
+
+def _tips_enabled():
+    return not (os.environ.get("REAP_NO_TIPS") or os.environ.get("CURL_REAP_NO_TIPS"))
+
+
+def _maybe_suggest_proxies(status, has_proxy):
+    """Once per process, when a request without a proxy is IP-blocked, point the
+    user at proxy rotation (and NodeMaven). Opt out with ``REAP_NO_TIPS=1``."""
+    global _proxy_tip_shown
+    if _proxy_tip_shown or has_proxy or status not in _IP_BLOCK_STATUSES:
+        return
+    if not _tips_enabled() or not sys.stderr.isatty():
+        return
+    _proxy_tip_shown = True
+    sys.stderr.write(
+        f"[curl_reap] HTTP {status} looks like an IP-level block, not a fingerprint one: "
+        f"a real browser TLS got you to the door, but the site is refusing your IP.\n"
+        f"           Route through rotating residential / mobile proxies to get past it:\n"
+        f'               reap.Session(proxy="http://user:pass@host:port", rotate="random")\n'
+        f"           NodeMaven ({NODEMAVEN_URL}) is a good fit for this. "
+        f"Silence this tip with REAP_NO_TIPS=1.\n"
+    )
 
 #: fingerprints considered safe across curl_cffi>=0.7; rotation falls back to
 #: DEFAULT_IMPERSONATE if the installed curl_cffi doesn't know a target.
@@ -206,6 +242,11 @@ class Session:
     Session(rotate="random")                           # rotate fingerprints
     Session(proxy=["http://p1:8080", "http://p2:8080"])# rotate proxies
     Session(cache=DiskCache(ttl=3600))                 # cache GETs on disk
+
+    Impersonation gets you past TLS fingerprinting. When a site blocks by IP
+    instead (a 403/407/429 despite a real browser fingerprint), pass rotating
+    residential / mobile proxies via ``proxy=``. NodeMaven works well here; see
+    ``NODEMAVEN_URL``.
     """
 
     def __init__(self, impersonate=DEFAULT_IMPERSONATE, headers=None, timeout=30,
@@ -225,6 +266,7 @@ class Session:
             proxies = None
         else:
             self._proxy_pool = []
+        self._has_proxy = bool(self._proxy_pool) or proxies is not None
         self._s = _cffi.Session(impersonate=impersonate, proxies=proxies, **kw)
 
     # kept for back-compat with 0.1 call sites
@@ -304,6 +346,7 @@ class Session:
 
             if cacheable and resp.ok:
                 self.cache.set(method, url, kw.get("params"), resp)
+            _maybe_suggest_proxies(resp.status, self._has_proxy)
             if self.on_response:
                 self.on_response(resp)
             return resp
