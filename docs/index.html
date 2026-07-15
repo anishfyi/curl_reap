@@ -90,13 +90,30 @@
   .api .sig{font-family:'JetBrains Mono',monospace;font-size:13.5px;color:var(--ink);font-weight:600;margin-bottom:8px;word-break:break-word}
   .api .sig b{color:var(--gold)}
 
-  /* sponsors */
-  .sponsors{margin:26px 0 8px;padding:16px 18px 18px;background:var(--card);border:1px solid var(--line);border-radius:12px}
-  .sponsors .lbl{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:13px}
-  .sponsors .logos{display:flex;flex-wrap:wrap;align-items:center;gap:26px}
-  .sponsors a{display:inline-flex;align-items:center;opacity:.88;transition:opacity .15s}
-  .sponsors a:hover{opacity:1;text-decoration:none}
-  .sponsors img{height:40px;width:auto;display:block}
+  /* sponsors modal */
+  .sponsor-modal{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;padding:24px}
+  .sponsor-modal:target{display:flex}
+  .sponsor-scrim{position:absolute;inset:0;background:rgba(28,26,22,.5);backdrop-filter:blur(3px)}
+  .sponsor-card{position:relative;z-index:1;background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:32px 34px 28px;text-align:center;max-width:420px;width:100%;max-height:88vh;overflow-y:auto;
+    box-shadow:0 24px 70px rgba(28,26,22,.26)}
+  .sponsor-close{position:absolute;top:12px;right:16px;color:var(--faint);font-size:22px;line-height:1;text-decoration:none}
+  .sponsor-close:hover{color:var(--ink)}
+  .sponsor-eyebrow{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:16px}
+  .sponsor-logo{display:inline-flex;align-items:center;opacity:.95;transition:opacity .15s}
+  .sponsor-logo:hover{opacity:1;text-decoration:none}
+  .sponsor-logo img{height:38px;width:auto}
+  .sponsor-tagline{margin-top:18px;font-size:13px;line-height:1.6;color:var(--muted)}
+  .sponsor-why{margin:16px 0 0;padding:0;list-style:none;text-align:left}
+  .sponsor-why li{position:relative;padding-left:22px;margin:7px 0;font-size:12.5px;line-height:1.5;color:var(--ink)}
+  .sponsor-why li::before{content:"";position:absolute;left:5px;top:6px;width:6px;height:6px;border-radius:50%;background:var(--gold)}
+  .sponsor-codes-label{margin-top:20px;font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .sponsor-codes{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+  .sponsor-code{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--gold-bg)}
+  .sponsor-code b{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;color:#9a6a12;letter-spacing:.02em}
+  .sponsor-code span{font-size:11.5px;color:var(--muted)}
+  .sponsor-cta{display:inline-block;margin-top:20px;padding:10px 22px;border-radius:10px;background:var(--gold);color:#fff;font-weight:700;font-size:13px;text-decoration:none;transition:opacity .15s}
+  .sponsor-cta:hover{opacity:.92;text-decoration:none}
 
   footer{border-top:1px solid var(--line);padding:30px clamp(18px,4vw,56px);color:var(--faint);font-size:13.5px;text-align:center}
 
@@ -127,6 +144,7 @@
   <button class="menu-btn" @click="menu=!menu" aria-label="Menu">&#9776;</button>
   <a class="brand" href="#intro"><img src="logo-mark.svg" alt=""/><span>curl<b>_reap</b></span></a>
   <span class="grow"></span>
+  <a class="hlink" href="#sponsors">Sponsors</a>
   <a class="hlink" href="https://pypi.org/project/curl-reap/" target="_blank" rel="noopener">PyPI</a>
   <a class="pill" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">GitHub</a>
 </header>
@@ -164,14 +182,6 @@
         <a class="cta ghost" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">Star on GitHub</a>
       </div>
 
-      <div class="sponsors">
-        <div class="lbl">Sponsors</div>
-        <div class="logos">
-          <a href="https://nodemaven.com/" target="_blank" rel="noopener sponsored" title="NodeMaven - residential and mobile proxies">
-            <img src="sponsors/nodemaven.svg" alt="NodeMaven" width="184" height="42" />
-          </a>
-        </div>
-      </div>
 
       <div class="tablewrap"><table>
         <tr><th></th><th>curl_cffi</th><th>Scrapy</th><th>Scrapling</th><th>curl_reap</th></tr>
@@ -433,6 +443,31 @@ reap.run(MySpider, pipelines=[
   &nbsp;&middot;&nbsp; <a href="https://pypi.org/project/curl-reap/" target="_blank" rel="noopener">PyPI</a>
   &nbsp;&middot;&nbsp; <a href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">GitHub</a>
 </footer>
+
+<div id="sponsors" class="sponsor-modal">
+  <a href="#" class="sponsor-scrim" aria-label="Close"></a>
+  <div class="sponsor-card" role="dialog" aria-modal="true" aria-label="Sponsors">
+    <a href="#" class="sponsor-close" aria-label="Close">&times;</a>
+    <div class="sponsor-eyebrow">Sponsored by</div>
+    <a href="https://go.nodemaven.com/curlreaptools" target="_blank" rel="noopener sponsored" title="NodeMaven" class="sponsor-logo">
+      <img src="sponsors/nodemaven.svg" alt="NodeMaven" height="38" />
+    </a>
+    <p class="sponsor-tagline">The most reliable proxy provider with the highest quality IPs on the market. Best solution for automation, web scraping, SEO research, and social media management.</p>
+    <ul class="sponsor-why">
+      <li>99.9% uptime</li>
+      <li>Sticky sessions up to 7 days</li>
+      <li>IP filtering: all proxies have a fraud score &lt;97%</li>
+      <li>No KYC required</li>
+      <li>Cashback on traffic: burn GB and earn up to 10% back</li>
+    </ul>
+    <div class="sponsor-codes-label">Codes for curl_reap users</div>
+    <div class="sponsor-codes">
+      <div class="sponsor-code"><b>CURLREAP35</b><span>35% off Mobile &amp; Residential</span></div>
+      <div class="sponsor-code"><b>CURLREAP40</b><span>40% off ISP (Static)</span></div>
+    </div>
+    <a class="sponsor-cta" href="https://go.nodemaven.com/curlreaptools" target="_blank" rel="noopener sponsored">Get NodeMaven &rarr;</a>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 <script>
