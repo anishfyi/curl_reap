@@ -44,6 +44,7 @@ from .engine import Reaper, run
 from .geocode import Geocoder, geocode
 from .http import (
     FINGERPRINTS,
+    NODEMAVEN_URL,
     HTTPStatusError,
     Response,
     RetryPolicy,
@@ -78,6 +79,6 @@ __all__ = [
     "Pipeline", "DedupPipeline", "JsonLinesPipeline", "CsvPipeline",
     "SqlitePipeline", "AutoThrottle",
     # extras
-    "Geocoder", "geocode",
+    "Geocoder", "geocode", "NODEMAVEN_URL",
     "__version__",
 ]
