@@ -61,6 +61,14 @@ Modern scraping needs three things, and today you reach for three different tool
 | Disk response cache | no | partial | no | **yes** |
 | One small dependency set | yes | no | no | **yes** |
 
+## New in 0.3.0
+
+- **Encoding detection.** Pages decode cleanly even when the server omits or lies about the charset (BOM, Content-Type, `<meta charset>`, then charset-normalizer if it is installed). `Response.encoding` exposes the result.
+- **Conditional cache revalidation.** A stale `DiskCache` entry revalidates with `If-None-Match` / `If-Modified-Since`; a `304 Not Modified` serves the cached body instead of re-downloading.
+- **robots.txt Crawl-delay and Sitemap discovery.** The crawler floors its per-domain pace at the site's `Crawl-delay`, and surfaces declared sitemaps via `Reaper.discovered_sitemaps`.
+- **Gzipped sitemaps.** `SitemapSpider` decompresses `.xml.gz` sitemaps and indexes before parsing.
+- **Auto proxy rotation on a block.** On a 403/407/429 with a proxy pool configured, the session rotates onto a fresh proxy and retries.
+
 ## Install
 
 ```bash

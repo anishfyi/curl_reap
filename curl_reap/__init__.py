@@ -65,7 +65,7 @@ from .pipelines import (
 from .spider import Request, SitemapSpider, Spider
 from .throttle import AutoThrottle
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 __all__ = [
     # transport
