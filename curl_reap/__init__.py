@@ -49,6 +49,7 @@ from .http import (
     Response,
     RetryPolicy,
     Session,
+    detect_encoding,
     fetch,
     get,
     post,
@@ -64,12 +65,12 @@ from .pipelines import (
 from .spider import Request, SitemapSpider, Spider
 from .throttle import AutoThrottle
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 __all__ = [
     # transport
     "get", "post", "fetch", "Session", "Response", "RetryPolicy",
-    "HTTPStatusError", "FINGERPRINTS", "DiskCache",
+    "HTTPStatusError", "FINGERPRINTS", "DiskCache", "detect_encoding",
     "AsyncSession", "aget", "apost",
     # parsing
     "Selector", "SelectorList",

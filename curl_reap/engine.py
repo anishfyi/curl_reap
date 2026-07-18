@@ -63,7 +63,8 @@ class _Frontier:
 
 
 class _RobotsGate:
-    """Per-host robots.txt fetch + can_fetch, cached, fail-open."""
+    """Per-host robots.txt fetch, cached and fail-open. Beyond can_fetch it also
+    reads Crawl-delay (fed into the throttle) and Sitemap directives (discovery)."""
 
     def __init__(self, session, enabled=True, agent="*"):
         self.session = session
@@ -72,30 +73,51 @@ class _RobotsGate:
         self._parsers = {}
         self._lock = threading.Lock()
 
-    def allowed(self, url):
-        if not self.enabled:
-            return True
+    def _parser_for(self, url):
         from urllib import robotparser
         host = urlparse(url)
         root = f"{host.scheme}://{host.netloc}"
         with self._lock:
             rp = self._parsers.get(root)
-        if rp is None:
-            rp = robotparser.RobotFileParser()
-            try:
-                resp = self.session.get(root + "/robots.txt", retries=0)
-                if resp.ok:
-                    rp.parse(resp.text.splitlines())
-                else:
-                    rp.allow_all = True
-            except Exception:  # noqa: BLE001
-                rp.allow_all = True
-            with self._lock:
-                self._parsers[root] = rp
+        if rp is not None:
+            return rp
+        rp = robotparser.RobotFileParser()
         try:
-            return rp.can_fetch(self.agent, url)
+            resp = self.session.get(root + "/robots.txt", retries=0)
+            if resp.ok:
+                rp.parse(resp.text.splitlines())
+            else:
+                rp.allow_all = True
+        except Exception:  # noqa: BLE001
+            rp.allow_all = True
+        with self._lock:
+            self._parsers.setdefault(root, rp)
+            return self._parsers[root]
+
+    def allowed(self, url):
+        if not self.enabled:
+            return True
+        try:
+            return self._parser_for(url).can_fetch(self.agent, url)
         except Exception:  # noqa: BLE001
             return True
+
+    def crawl_delay(self, url):
+        """The Crawl-delay the site asks for (seconds), or None."""
+        if not self.enabled:
+            return None
+        try:
+            d = self._parser_for(url).crawl_delay(self.agent)
+            return float(d) if d is not None else None
+        except (AttributeError, ValueError, TypeError):
+            return None
+
+    def sitemaps(self, url):
+        """Sitemap URLs declared in the host's robots.txt."""
+        try:
+            return list(self._parser_for(url).site_maps() or [])
+        except AttributeError:
+            return []
 
 
 class Reaper:
@@ -141,12 +163,32 @@ class Reaper:
         domain = urlparse(url).netloc
         with self._lock:
             th = self._throttles.get(domain)
+        if th is not None:
+            return th
+        # Let the site's Crawl-delay set a floor on how fast we hit this domain.
+        floor = self._base_delay
+        cd = self.robots.crawl_delay(url)
+        if cd:
+            floor = max(floor, cd)
+        with self._lock:
+            th = self._throttles.get(domain)
             if th is None:
-                th = AutoThrottle(base_delay=self._base_delay,
+                th = AutoThrottle(base_delay=floor,
                                   target_concurrency=self.concurrency,
                                   enabled=self._throttle_enabled)
                 self._throttles[domain] = th
-        return th
+            return th
+
+    @property
+    def discovered_sitemaps(self):
+        """Sitemap URLs declared in the robots.txt of hosts crawled so far."""
+        out = []
+        for rp in list(self.robots._parsers.values()):
+            try:
+                out.extend(rp.site_maps() or [])
+            except AttributeError:
+                pass
+        return sorted(set(out))
 
     def _onsite(self, url):
         if self._allowed is None:
