@@ -34,34 +34,63 @@ class DiskCache:
         return (os.path.join(self.directory, key + ".json"),
                 os.path.join(self.directory, key + ".body"))
 
-    def get(self, method, url, params=None):
-        """Return kwargs for Response(...) or None on miss/expiry."""
+    def _read(self, method, url, params):
+        """The full stored entry (meta + body) regardless of TTL, or None."""
         meta_p, body_p = self._paths(self._key(method, url, params))
         try:
             with open(meta_p, encoding="utf-8") as fh:
                 entry = json.load(fh)
-            if self.ttl and time.time() - entry["saved_at"] > self.ttl:
-                return None
             with open(body_p, "rb") as fh:
-                content = fh.read()
+                entry["content"] = fh.read()
         except (OSError, ValueError, KeyError):
+            return None
+        return entry
+
+    def get(self, method, url, params=None):
+        """Return kwargs for Response(...) for a fresh entry, or None on miss/expiry."""
+        entry = self._read(method, url, params)
+        if entry is None:
+            return None
+        if self.ttl and time.time() - entry["saved_at"] > self.ttl:
             return None
         return {
             "status": entry["status"],
             "url": entry["url"],
             "headers": entry["headers"],
-            "content": content,
+            "content": entry["content"],
         }
+
+    def get_stale(self, method, url, params=None):
+        """The stored entry ignoring TTL, carrying etag/last_modified so the caller
+        can revalidate with a conditional request. None when nothing is stored."""
+        return self._read(method, url, params)
+
+    def touch(self, method, url, params=None):
+        """Mark a stored entry fresh again (after a 304 Not Modified)."""
+        meta_p, _ = self._paths(self._key(method, url, params))
+        try:
+            with open(meta_p, encoding="utf-8") as fh:
+                entry = json.load(fh)
+            entry["saved_at"] = time.time()
+            tmp = meta_p + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(entry, fh)
+            os.replace(tmp, meta_p)
+        except (OSError, ValueError):
+            pass
 
     def set(self, method, url, params, resp):
         os.makedirs(self.directory, exist_ok=True)
         meta_p, body_p = self._paths(self._key(method, url, params))
+        h = resp.headers
         tmp = meta_p + ".tmp"
         with open(body_p, "wb") as fh:
             fh.write(resp.content or b"")
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump({"status": resp.status, "url": resp.url,
-                       "headers": resp.headers, "saved_at": time.time()}, fh)
+                       "headers": resp.headers, "saved_at": time.time(),
+                       "etag": h.get("ETag") or h.get("etag"),
+                       "last_modified": h.get("Last-Modified") or h.get("last-modified")}, fh)
         os.replace(tmp, meta_p)
 
     def clear(self):

@@ -366,6 +366,7 @@ class Session:
 
         cacheable = (self.cache is not None and not no_cache
                      and method.upper() == "GET" and self.cache.accepts(method))
+        revalidate = None
         if cacheable:
             hit = self.cache.get(method, url, kw.get("params"))
             if hit is not None:
@@ -373,6 +374,19 @@ class Session:
                 if self.on_response:
                     self.on_response(resp)
                 return resp
+            # Stale but present: revalidate cheaply with a conditional request.
+            stale = self.cache.get_stale(method, url, kw.get("params"))
+            if stale:
+                cond = {}
+                if stale.get("etag"):
+                    cond["If-None-Match"] = stale["etag"]
+                if stale.get("last_modified"):
+                    cond["If-Modified-Since"] = stale["last_modified"]
+                if cond:
+                    hdrs = dict(kw.get("headers") or {})
+                    hdrs.update(cond)
+                    kw["headers"] = hdrs
+                    revalidate = stale
 
         attempt = 0
         last_exc = None
@@ -405,6 +419,14 @@ class Session:
                 continue
 
             resp = Response(raw, meta=meta, elapsed=time.time() - t0)
+            if revalidate is not None and resp.status == 304:
+                self.cache.touch(method, url, kw.get("params"))
+                cached = Response(meta=meta, from_cache=True,
+                                  status=revalidate["status"], url=revalidate["url"],
+                                  headers=revalidate["headers"], content=revalidate["content"])
+                if self.on_response:
+                    self.on_response(cached)
+                return cached
             if policy.should_retry_status(resp.status) and attempt < policy.retries:
                 time.sleep(policy.delay(attempt, resp.headers.get("Retry-After")))
                 attempt += 1
