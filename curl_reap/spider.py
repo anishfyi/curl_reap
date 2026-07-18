@@ -81,8 +81,18 @@ class SitemapSpider(Spider):
             yield Request(url, self.parse_sitemap, dont_filter=True)
 
     def parse_sitemap(self, page):
+        import gzip
+        raw = page.content or b""
+        # Gzipped sitemaps (.xml.gz, or gzip magic bytes) must be decompressed
+        # before parsing; page.text would just be binary noise.
+        if raw[:2] == b"\x1f\x8b" or (page.url or "").rstrip("/").endswith(".gz"):
+            try:
+                raw = gzip.decompress(raw)
+            except (OSError, EOFError):
+                raw = page.content or b""
+        text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
         pat = re.compile(self.url_pattern) if self.url_pattern else None
-        for loc in self._LOC.findall(page.text):
+        for loc in self._LOC.findall(text):
             loc = loc.strip()
             if loc.rstrip("/").endswith((".xml", ".xml.gz")):
                 yield Request(loc, self.parse_sitemap, dont_filter=True)
