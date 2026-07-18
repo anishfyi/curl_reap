@@ -83,7 +83,7 @@ print(page.css_first("small.author::text"))
 
 ## Structured extraction
 
-The answers most scrapes actually want are one method call away — no selectors required:
+The answers most scrapes actually want are one method call away, no selectors required:
 
 ```python
 page = reap.get("https://example.com/product/42")
@@ -93,7 +93,7 @@ page.meta_tags()   # {title, description, og:*, twitter:*, canonical, ...}
 page.links(internal_only=True)   # [{"url": ..., "text": ...}, ...] absolute urls
 page.images()      # [{"url": ..., "alt": ...}] (handles lazy data-src)
 page.tables()      # every <table> as list-of-rows
-page.markdown()    # readable page content as markdown — great for LLMs
+page.markdown()    # readable page content as markdown, great for LLMs
 ```
 
 ## Resilience: retries, rotation, cache, async
