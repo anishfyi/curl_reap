@@ -317,7 +317,7 @@ class Session:
 
     def __init__(self, impersonate=DEFAULT_IMPERSONATE, headers=None, timeout=30,
                  retries=2, proxies=None, proxy=None, rotate=None, fingerprints=None,
-                 retry_policy=None, cache=None, on_response=None, **kw):
+                 retry_policy=None, cache=None, on_response=None, block_rotations=None, **kw):
         self.impersonate = impersonate
         self.timeout = timeout
         self.rotate = rotate
@@ -333,6 +333,10 @@ class Session:
         else:
             self._proxy_pool = []
         self._has_proxy = bool(self._proxy_pool) or proxies is not None
+        # How many times to rotate onto a fresh proxy after an IP-level block.
+        # Defaults to trying each pooled proxy once (only useful with >1 proxy).
+        self.block_rotations = (block_rotations if block_rotations is not None
+                                else (len(self._proxy_pool) if len(self._proxy_pool) > 1 else 0))
         self._s = _cffi.Session(impersonate=impersonate, proxies=proxies, **kw)
 
     # kept for back-compat with 0.1 call sites
@@ -389,6 +393,7 @@ class Session:
                     revalidate = stale
 
         attempt = 0
+        rotations = 0
         last_exc = None
         while True:
             n = self._counter
@@ -427,6 +432,13 @@ class Session:
                 if self.on_response:
                     self.on_response(cached)
                 return cached
+            # IP-level block (not a fingerprint one): rotate onto a fresh proxy
+            # and retry, since the counter advances the proxy/fingerprint each pass.
+            if (resp.status in _IP_BLOCK_STATUSES and self._proxy_pool
+                    and rotations < self.block_rotations):
+                rotations += 1
+                time.sleep(min(policy.max_backoff, 0.3 * rotations))
+                continue
             if policy.should_retry_status(resp.status) and attempt < policy.retries:
                 time.sleep(policy.delay(attempt, resp.headers.get("Retry-After")))
                 attempt += 1
