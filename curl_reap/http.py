@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import sys
 import time
 
@@ -98,6 +99,44 @@ class RetryPolicy:
         return min(self.max_backoff, base * (0.5 + random.random()))
 
 
+_META_CHARSET = re.compile(rb'<meta[^>]+?charset=["\']?\s*([a-zA-Z0-9_\-]+)', re.I)
+_META_CT = re.compile(rb'<meta[^>]+?content=["\'][^"\']*?charset=\s*([a-zA-Z0-9_\-]+)', re.I)
+
+
+def detect_encoding(content, headers=None):
+    """Best-effort charset detection so a page decodes cleanly even when the
+    server lies or omits the charset. Order: BOM, Content-Type header, the HTML
+    ``<meta charset>``, then charset-normalizer if it happens to be installed.
+    Returns an encoding name, or None when nothing is confident."""
+    if not content:
+        return None
+    if content[:3] == b"\xef\xbb\xbf":
+        return "utf-8-sig"
+    if content[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return "utf-16"
+    ct = ""
+    if headers:
+        ct = headers.get("Content-Type") or headers.get("content-type") or ""
+    m = re.search(r"charset=[\"']?\s*([a-zA-Z0-9_\-]+)", ct, re.I)
+    if m:
+        return m.group(1)
+    head = content[:4096]
+    m = _META_CHARSET.search(head) or _META_CT.search(head)
+    if m:
+        try:
+            return m.group(1).decode("ascii")
+        except (UnicodeDecodeError, AttributeError):
+            pass
+    try:
+        from charset_normalizer import from_bytes
+        best = from_bytes(content).best()
+        if best and best.encoding:
+            return best.encoding
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 class Response:
     """A fetched page. Behaves like a parser (css/xpath pass through to a Selector)."""
 
@@ -124,11 +163,38 @@ class Response:
         self.elapsed = elapsed
         self.from_cache = from_cache
         self._sel = None
+        self._encoding = None
+        self._fix_garbled_text()
+
+    def _fix_garbled_text(self):
+        """If the first decode garbled the page (replacement characters), redo it
+        with a properly detected charset when that reads cleaner. Clean pages are
+        untouched, so this only ever helps."""
+        text = self.text
+        if not text or "�" not in text or not self.content:
+            return
+        enc = detect_encoding(self.content, self.headers)
+        if not enc:
+            return
+        try:
+            redecoded = self.content.decode(enc, "replace")
+        except (LookupError, TypeError):
+            return
+        if redecoded.count("�") < text.count("�"):
+            self.text = redecoded
+            self._encoding = enc
 
     # --- status ------------------------------------------------------------
     @property
     def ok(self):
         return 200 <= self.status < 300
+
+    @property
+    def encoding(self):
+        """The charset the body was decoded with (detected when the server lied)."""
+        if self._encoding is None:
+            self._encoding = detect_encoding(self.content, self.headers) or "utf-8"
+        return self._encoding
 
     @property
     def status_code(self):

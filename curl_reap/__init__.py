@@ -49,6 +49,7 @@ from .http import (
     Response,
     RetryPolicy,
     Session,
+    detect_encoding,
     fetch,
     get,
     post,
@@ -69,7 +70,7 @@ __version__ = "0.2.2"
 __all__ = [
     # transport
     "get", "post", "fetch", "Session", "Response", "RetryPolicy",
-    "HTTPStatusError", "FINGERPRINTS", "DiskCache",
+    "HTTPStatusError", "FINGERPRINTS", "DiskCache", "detect_encoding",
     "AsyncSession", "aget", "apost",
     # parsing
     "Selector", "SelectorList",
