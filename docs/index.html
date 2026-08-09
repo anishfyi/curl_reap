@@ -3,12 +3,135 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>curl_reap docs - reap the web</title>
-<meta name="description" content="Documentation for curl_reap: browser-grade TLS impersonation, self-healing selectors, and a concurrent crawl engine in one Python library." />
+<title>curl_reap: scrape past TLS fingerprint blocking in Python</title>
+<!-- seo:anishfyi -->
+<meta name="description" content="curl_reap combines browser-grade TLS and JA3 impersonation, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single Python library.">
+<meta name="author" content="Anish Kr Singh">
+<link rel="canonical" href="https://anishfyi.com/curl_reap/">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="anishfyi">
+<meta property="og:locale" content="en_IN">
+<meta property="og:url" content="https://anishfyi.com/curl_reap/">
+<meta property="og:title" content="curl_reap: scrape past TLS fingerprint blocking in Python">
+<meta property="og:description" content="Browser-grade TLS impersonation, self-healing selectors, structured extraction and a concurrent crawl engine in one small Python library. pip install curl_reap.">
+<meta property="og:image" content="https://anishfyi.com/curl_reap/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="curl_reap, reap the web">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="curl_reap: scrape past TLS fingerprint blocking in Python">
+<meta name="twitter:description" content="Browser-grade TLS impersonation, self-healing selectors, structured extraction and a concurrent crawl engine in one small Python library. pip install curl_reap.">
+<meta name="twitter:image" content="https://anishfyi.com/curl_reap/og.png">
+<meta name="twitter:image:alt" content="curl_reap, reap the web">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://anishfyi.com/curl_reap/#webpage",
+      "url": "https://anishfyi.com/curl_reap/",
+      "name": "curl_reap: scrape past TLS fingerprint blocking in Python",
+      "description": "curl_reap combines browser-grade TLS and JA3 impersonation, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single Python library.",
+      "inLanguage": "en",
+      "isPartOf": {
+        "@id": "https://anishfyi.com/#website"
+      },
+      "about": {
+        "@id": "https://anishfyi.com/curl_reap/#software"
+      },
+      "primaryImageOfPage": "https://anishfyi.com/curl_reap/og.png",
+      "author": {
+        "@id": "https://anishfyi.com/#person"
+      },
+      "breadcrumb": {
+        "@id": "https://anishfyi.com/curl_reap/#breadcrumb"
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://anishfyi.com/curl_reap/#software",
+      "name": "curl_reap",
+      "url": "https://anishfyi.com/curl_reap/",
+      "description": "curl_reap combines browser-grade TLS and JA3 impersonation, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single Python library.",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "macOS, Linux, Windows",
+      "author": {
+        "@id": "https://anishfyi.com/#person"
+      },
+      "publisher": {
+        "@id": "https://anishfyi.com/#person"
+      },
+      "image": "https://anishfyi.com/curl_reap/og.png",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Sends a real Chrome or Safari TLS and JA3 fingerprint through curl_cffi, so sites that block stock Python clients with a 403 serve the page.",
+        "Self-healing CSS and XPath selectors re-find an element after a site renames a class.",
+        "One-call structured extraction to JSON-LD, tables and markdown.",
+        "Includes disk caching, retries and a hand-written concurrent crawl engine.",
+        "Collapses three tools into one: curl_cffi for the handshake, Scrapling for healing selectors, Scrapy for the crawl.",
+        "MIT licensed, current version 0.3.0, published to PyPI as `curl-reap`.",
+        "Sponsored by NodeMaven, a disclosed commercial relationship."
+      ],
+      "softwareVersion": "0.3.0",
+      "license": "https://opensource.org/licenses/MIT",
+      "programmingLanguage": "Python",
+      "codeRepository": "https://github.com/anishfyi/curl_reap",
+      "sameAs": [
+        "https://github.com/anishfyi/curl_reap"
+      ]
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": "https://anishfyi.com/curl_reap/#source",
+      "name": "curl_reap",
+      "codeRepository": "https://github.com/anishfyi/curl_reap",
+      "programmingLanguage": "Python",
+      "author": {
+        "@id": "https://anishfyi.com/#person"
+      },
+      "about": {
+        "@id": "https://anishfyi.com/curl_reap/#software"
+      },
+      "description": "One Python library for getting past TLS fingerprinting, surviving markup changes, and crawling at scale."
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://anishfyi.com/curl_reap/#breadcrumb",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "anishfyi",
+          "item": "https://anishfyi.com/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Projects",
+          "item": "https://anishfyi.com/projects/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "curl_reap",
+          "item": "https://anishfyi.com/curl_reap/"
+        }
+      ]
+    }
+  ]
+}
+</script>
+<!-- /seo:anishfyi -->
 <link rel="icon" href="logo.svg" type="image/svg+xml" />
-<meta property="og:title" content="curl_reap docs" />
-<meta property="og:description" content="Browser-grade TLS impersonation, self-healing selectors, and a concurrent crawl engine in one Python library." />
-<meta property="og:image" content="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
