@@ -42,26 +42,33 @@ Full documentation with deep API reference and examples: **https://anishfyi.gith
 
 Modern scraping needs three things, and today you reach for three different tools:
 
-1. **Get past the door.** Sites fingerprint your TLS handshake and block stock Python clients. `curl_cffi` solves this with real Chrome/Safari fingerprints.
+1. **Get past the door.** Sites fingerprint your TLS handshake and block stock Python clients. curl_reap's own transport answers with browser-inspired TLS/header profiles (chrome, firefox, safari) plus byte-level header ordering.
 2. **Survive markup changes.** Plain CSS and XPath break the moment a site renames a class. Scrapling pioneered self-healing selectors that re-find the element anyway.
 3. **Crawl at scale.** Concurrency, throttling, retries, dedup, and pipelines. That is Scrapy.
 
 `curl_reap` takes the best idea from each and puts them behind one friendly API.
 
-| | curl_cffi | Scrapy | Scrapling | **curl_reap** |
-|---|:---:|:---:|:---:|:---:|
-| Real browser TLS / JA3 | yes | no | partial | **yes** |
-| Parser built in | no | yes | yes | **yes** |
-| Self-healing selectors | no | no | yes | **yes** |
-| Structured extraction (jsonld/meta/tables/markdown) | no | no | partial | **yes** |
-| Concurrent crawl engine | no | yes | no | **yes** |
-| AutoThrottle, retries, pipelines | no | yes | no | **yes** |
-| Fingerprint + proxy rotation | partial | no | no | **yes** |
-| Async client | yes | no | partial | **yes** |
-| Disk response cache | no | partial | no | **yes** |
-| One small dependency set | yes | no | no | **yes** |
+| | Scrapy | Scrapling | **curl_reap** |
+|---|:---:|:---:|:---:|
+| Browser-inspired TLS / header profiles | no | partial | **yes** |
+| Parser built in | yes | yes | **yes** |
+| Self-healing selectors | no | yes | **yes** |
+| Structured extraction (jsonld/meta/tables/markdown) | no | partial | **yes** |
+| Concurrent crawl engine | yes | no | **yes** |
+| AutoThrottle, retries, pipelines | yes | no | **yes** |
+| Fingerprint + proxy rotation | no | no | **yes** |
+| Async client | no | partial | **yes** |
+| Disk response cache | partial | no | **yes** |
+| One small dependency set | no | no | **yes** (lxml + cssselect only) |
 
-## New in 0.3.0
+## New in 1.0.0
+
+- **Own transport, zero curl_cffi.** The dependency is gone. curl_reap now ships a from-scratch HTTP/1.1 engine on the standard library (`socket` + `ssl`) with byte-level control of request-line formatting and header order and casing, keep-alive connection pooling, chunked transfer decoding, and gzip/deflate decoding.
+- **TLS/header profiles.** `Profile` dataclasses in `curl_reap.tls` tune cipher ordering, ALPN, and default headers per browser family. `Session(profile="chrome")`, custom profiles welcome. Honestly documented: the standard library cannot produce an exact browser ClientHello, so this is best effort, not JA3 parity.
+- **`profile=` replaces `impersonate=`** (breaking). `reap.get(url, profile="firefox")`. Rotation pools advance both profile and proxy across retries.
+- Plus everything new in 0.3.0 below: encoding detection, conditional cache revalidation, robots.txt Crawl-delay, gzipped sitemaps, auto proxy rotation.
+
+## Changed in 0.3.0
 
 - **Encoding detection.** Pages decode cleanly even when the server omits or lies about the charset (BOM, Content-Type, `<meta charset>`, then charset-normalizer if it is installed). `Response.encoding` exposes the result.
 - **Conditional cache revalidation.** A stale `DiskCache` entry revalidates with `If-None-Match` / `If-Modified-Since`; a `304 Not Modified` serves the cached body instead of re-downloading.
@@ -84,7 +91,7 @@ A one-shot fetch parses like parsel, but the request carries a genuine browser f
 ```python
 import curl_reap as reap
 
-page = reap.get("https://quotes.toscrape.com", impersonate="chrome124")
+page = reap.get("https://quotes.toscrape.com", profile="chrome")
 print(page.css("span.text::text").getall())
 print(page.css_first("small.author::text"))
 ```
@@ -202,8 +209,8 @@ reap crawl https://quotes.toscrape.com --css "span.text::text" \
 
 ## API at a glance
 
-- `reap.get(url, impersonate="chrome124", **kw)` and `reap.post(...)` return a `Response` you can `.css()` / `.xpath()` directly. `.status`, `.ok`, `.from_cache`, `.follow()`, `.raise_for_status()`.
-- `reap.Session(impersonate=..., headers=..., retry_policy=..., rotate=..., proxy=..., cache=...)` for a reusable client; `reap.AsyncSession` / `reap.aget` for async.
+- `reap.get(url, profile="chrome", **kw)` and `reap.post(...)` return a `Response` you can `.css()` / `.xpath()` directly. `.status`, `.ok`, `.from_cache`, `.follow()`, `.raise_for_status()`.
+- `reap.Session(profile=..., headers=..., retry_policy=..., rotate=..., proxy=..., cache=...)` for a reusable client; `reap.AsyncSession` / `reap.aget` for async.
 - Structured extraction on any page: `.jsonld()`, `.meta_tags()`, `.links()`, `.images()`, `.tables()`, `.markdown()`.
 - `Selector` / `SelectorList`: `.css`, `.css_first`, `.xpath`, `.find_by_text`, `.find_similar`, `.save`, `.re`, `.re_first`, `.text`, `.attr`.
 - `reap.Spider`, `reap.SitemapSpider`, `reap.Request(url, priority=, errback=, dont_filter=)`, `reap.run(spider, ...)`, `reap.Reaper(...)`.
@@ -212,9 +219,20 @@ reap crawl https://quotes.toscrape.com --css "span.text::text" \
 
 ## Legal and acceptable use
 
-`curl_reap` impersonates a real browser at the TLS level, which is what a normal browser does. It does **not** solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services (Cloudflare, DataDome, PerimeterX, Akamai). If a site is actively blocking you, that block is the line to respect. You are responsible for checking robots.txt and each site's terms, not circumventing technical access controls, handling personal data lawfully (GDPR / CCPA), and respecting copyright. Provided under MIT, "as is", with no warranty.
+`curl_reap` sends browser-inspired TLS and header profiles, which is what a normal browser does. It does **not** solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services (Cloudflare, DataDome, PerimeterX, Akamai). If a site is actively blocking you, that block is the line to respect. You are responsible for checking robots.txt and each site's terms, not circumventing technical access controls, handling personal data lawfully (GDPR / CCPA), and respecting copyright. Provided under MIT, "as is", with no warranty.
 
 Full notice and your responsibilities as a user: **[LEGAL.md](LEGAL.md)**.
+
+## Credits
+
+With thanks to the projects and people whose ideas this library builds on:
+
+- **curl_cffi** by Yuriy Lexifi and contributors, for proving how far TLS impersonation can take a scraper. The 1.0 transport is written from scratch on the Python standard library, but the inspiration is explicit.
+- **Scrapy**, for the crawl-engine blueprint: spiders, priorities, throttling, pipelines.
+- **Scrapling** and **parsel**, for self-healing selectors and the css/xpath ergonomics this parser follows.
+- **curl-impersonate** by lwthiker, the original browser-TLS-for-curl project.
+
+Built with AI hands: transport rewrite, docs site, and tests co-developed with **ox-alpha**, an AI agent whose makers keep their name off the label (the mystery lab), alongside the claude-work and codex agents, fanned out and judged via **kestrel-cli**. Made with the help of AI, on Anish's machine, for a freer web.
 
 ## License
 
