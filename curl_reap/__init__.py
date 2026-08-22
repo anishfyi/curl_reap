@@ -55,7 +55,7 @@ from .http import (
     get,
     post,
 )
-from .tls import PROFILES, Profile
+from .tls import FINGERPRINTS, PROFILES, Profile
 from .parser import Selector, SelectorList
 from .pipelines import (
     CsvPipeline,
@@ -85,7 +85,8 @@ __version__ = "1.0.0"
 __all__ = [
     # transport
     "get", "post", "fetch", "download", "Session", "Response", "RetryPolicy",
-    "HTTPStatusError", "TransportError", "CookieJar", "PROFILES", "Profile",
+    "HTTPStatusError", "TransportError", "CookieJar", "PROFILES",
+    "FINGERPRINTS", "Profile",
     "DiskCache",
     "detect_encoding",
     "AsyncSession", "aget", "apost",
