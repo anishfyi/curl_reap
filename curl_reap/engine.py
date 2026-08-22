@@ -1,5 +1,5 @@
 """The crawl engine (the Scrapy idea, kept small): concurrent fetching with
-dedup, retries, AutoThrottle, and item pipelines, on top of the impersonating
+dedup, retries, AutoThrottle, and item pipelines, on top of the ordered HTTP
 transport. Spider callbacks yield items (dicts) and further Requests.
 
 v0.2: a continuous scheduler replaces the old batch waves - workers pull from a
@@ -132,7 +132,7 @@ class Reaper:
     """
 
     def __init__(self, spider, concurrency=8, retries=2, throttle=True, delay=0.0,
-                 impersonate="chrome124", pipelines=None, dedup=True, on_item=None,
+                 profile="chrome", pipelines=None, dedup=True, on_item=None,
                  max_pages=None, max_depth=None, respect_robots=False, session=None,
                  cache=None, rotate=None, proxy=None):
         self.spider = spider
@@ -140,7 +140,7 @@ class Reaper:
         self.max_pages = max_pages
         self.max_depth = max_depth if max_depth is not None else getattr(spider, "max_depth", None)
         self.session = session or Session(
-            impersonate=impersonate, retries=retries, cache=cache, rotate=rotate,
+            profile=profile, retries=retries, cache=cache, rotate=rotate,
             proxy=proxy, headers=getattr(spider, "custom_headers", None))
         self.robots = _RobotsGate(self.session, enabled=respect_robots)
         self._base_delay = delay

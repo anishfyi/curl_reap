@@ -15,14 +15,14 @@ import json
 import sys
 
 
-def _fetch(url, impersonate, rotate):
+def _fetch(url, profile, rotate):
     from .http import Session
-    s = Session(impersonate=impersonate, rotate=rotate)
+    s = Session(profile=profile, rotate=rotate)
     return s.get(url)
 
 
 def _cmd_get(args):
-    r = _fetch(args.url, args.impersonate, args.rotate)
+    r = _fetch(args.url, args.profile, args.rotate)
     if not r.ok:
         print(f"[reap] HTTP {r.status} for {r.url}", file=sys.stderr)
     if args.css:
@@ -36,19 +36,18 @@ def _cmd_get(args):
     elif args.html:
         print(r.text)
     else:
-        print(r.markdown(max_len=args.max_len))
-    return 0 if r.ok else 1
+        print(r.markdown(max_len=args.max_len))    return 0 if r.ok else 1
 
 
 def _cmd_meta(args):
-    r = _fetch(args.url, args.impersonate, args.rotate)
+    r = _fetch(args.url, args.profile, args.rotate)
     out = {"meta": r.meta_tags(), "jsonld": r.jsonld()}
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0 if r.ok else 1
 
 
 def _cmd_links(args):
-    r = _fetch(args.url, args.impersonate, args.rotate)
+    r = _fetch(args.url, args.profile, args.rotate)
     for link in r.links(internal_only=args.internal):
         print(f"{link['url']}\t{link['text']}")
     return 0 if r.ok else 1
@@ -86,7 +85,7 @@ def _cmd_crawl(args):
 
     items = run(CliSpider, concurrency=args.concurrency, max_pages=args.max_pages,
                 max_depth=args.max_depth, respect_robots=args.robots,
-                rotate=args.rotate, pipelines=pipelines)
+                profile=args.profile, rotate=args.rotate, pipelines=pipelines)
     if not args.out:
         for it in items:
             print(json.dumps(it, ensure_ascii=False, default=str))
@@ -97,8 +96,9 @@ def _cmd_crawl(args):
 
 def build_parser():
     p = argparse.ArgumentParser(prog="reap", description="reap the web from the shell")
-    p.add_argument("--impersonate", default="chrome124", help="TLS fingerprint (default chrome124)")
-    p.add_argument("--rotate", choices=["random", "sequence"], help="rotate fingerprints")
+    p.add_argument("--profile", default="chrome", choices=["chrome", "firefox", "safari"],
+                   help="TLS/header profile (default chrome)")
+    p.add_argument("--rotate", choices=["random", "sequence"], help="rotate profiles")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     g = sub.add_parser("get", help="fetch one page")
@@ -107,6 +107,8 @@ def build_parser():
     g.add_argument("--xpath", help="XPath to extract")
     g.add_argument("--json", action="store_true", help="parse and pretty-print JSON")
     g.add_argument("--html", action="store_true", help="print raw HTML")
+    g.add_argument("--markdown", action="store_true",
+                   help="print readable markdown (the default)")
     g.add_argument("--max-len", type=int, default=None, help="truncate markdown output")
     g.set_defaults(func=_cmd_get)
 
