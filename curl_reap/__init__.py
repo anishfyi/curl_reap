@@ -1,9 +1,8 @@
 """curl_reap: reap the web.
 
 Three pillars in one library:
-  1. Transport: real browser TLS/JA3 impersonation (powered by curl_cffi) so your
-     requests are not fingerprinted as a bot - now with smart retries/backoff,
-     fingerprint + proxy rotation, a disk cache, and an async client.
+  1. Transport: ordered HTTP/1.1 over socket + ssl, with best-effort browser
+     family TLS/header profiles, retries, proxy rotation, caching, and async use.
   2. Parsing: a fast lxml selector with parsel-style css/xpath, self-healing
      selectors, and one-call structured extraction (jsonld, meta, links, images,
      tables, markdown).
@@ -37,14 +36,13 @@ Command line:
     reap get https://example.com --css "h1::text"
     reap crawl https://quotes.toscrape.com --css "span.text::text" -o out.jsonl
 """
+from . import pipelines as pipelines
 from .adaptive import relocate, save, signature, similarity
 from .aio import AsyncSession, aget, apost
 from .cache import DiskCache
 from .engine import Reaper, run
 from .geocode import Geocoder, geocode
 from .http import (
-    FINGERPRINTS,
-    NODEMAVEN_URL,
     HTTPStatusError,
     Response,
     RetryPolicy,
@@ -54,6 +52,7 @@ from .http import (
     get,
     post,
 )
+from .tls import PROFILES, Profile
 from .parser import Selector, SelectorList
 from .pipelines import (
     CsvPipeline,
@@ -65,12 +64,12 @@ from .pipelines import (
 from .spider import Request, SitemapSpider, Spider
 from .throttle import AutoThrottle
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"
 
 __all__ = [
     # transport
     "get", "post", "fetch", "Session", "Response", "RetryPolicy",
-    "HTTPStatusError", "FINGERPRINTS", "DiskCache", "detect_encoding",
+    "HTTPStatusError", "PROFILES", "Profile", "DiskCache", "detect_encoding",
     "AsyncSession", "aget", "apost",
     # parsing
     "Selector", "SelectorList",
@@ -78,8 +77,8 @@ __all__ = [
     # orchestration
     "Spider", "SitemapSpider", "Request", "Reaper", "run",
     "Pipeline", "DedupPipeline", "JsonLinesPipeline", "CsvPipeline",
-    "SqlitePipeline", "AutoThrottle",
+    "SqlitePipeline", "pipelines", "AutoThrottle",
     # extras
-    "Geocoder", "geocode", "NODEMAVEN_URL",
+    "Geocoder", "geocode",
     "__version__",
 ]
