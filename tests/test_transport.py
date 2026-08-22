@@ -1,3 +1,5 @@
+import http.server
+import threading
 import zlib
 
 import pytest
@@ -111,3 +113,180 @@ def test_profile_validation_and_custom_profile():
 
     custom = Profile(name="custom", headers=(("user-agent", "custom"),))
     assert curl_reap.Session(profile=custom).profile is custom
+
+
+# ---------------------------------------------------------------- cookies
+
+def test_cookie_jar_domain_path_and_expiry():
+    jar = curl_reap.CookieJar()
+    jar.absorb("https://shop.example.com/login", [
+        {"name": "sid", "value": "abc", "domain": "", "path": "/", "secure": True},
+        {"name": "track", "value": "x", "domain": ".example.com",
+         "path": "/browse", "secure": False, "max_age": 3600},
+        {"name": "dead", "value": "y", "max_age": -10},
+    ])
+    # secure cookie only over https
+    assert "sid=abc" in jar.header_for("https://shop.example.com/account")
+    assert "sid=abc" not in jar.header_for("http://shop.example.com/account")
+    # domain-scoped cookie matches subdomains but not the path
+    assert "track=x" in jar.header_for("https://other.example.com/browse/list")
+    assert "track=x" not in jar.header_for("https://other.example.com/")
+    # expired cookie was dropped at absorb time
+    assert jar.get_dict() == {"sid": "abc", "track": "x"}
+
+
+def test_session_sends_stored_cookies(monkeypatch):
+    from curl_reap.http import CaseInsensitiveHeaders
+
+    class LocalRaw:
+        def __init__(self):
+            self.status_code = 200
+            self.url = "https://api.test/"
+            self.headers = CaseInsensitiveHeaders({})
+            self.content = b"ok"
+            self.text = "ok"
+            self.cookies = {}
+            self.cookie_specs = []
+            self.saved_bytes = 0
+
+    session = curl_reap.Session(retries=0)
+    seen = []
+
+    def fake_single(method, url, profile, hop_headers=None, body=b"",
+                    content_type=None, timeout=30, proxy=None, verify=True,
+                    auth=None, sink=None):
+        seen.append(hop_headers)
+        return LocalRaw()
+
+    monkeypatch.setattr(session._transport, "_single_request", fake_single)
+    session.cookies.store("https://api.test/v1", {"session": "s3cr3t"})
+    session.get("https://api.test/v2/items")
+    flat = dict(seen[0])
+    assert flat.get("Cookie") == "session=s3cr3t"
+    # explicit user Cookie header wins over the jar
+    session.get("https://api.test/v2/items", headers={"Cookie": "manual=1"})
+    assert dict(seen[1])["Cookie"] == "manual=1"
+    # other hosts get nothing
+    session.get("https://elsewhere.test/")
+    assert "Cookie" not in dict(seen[2])
+
+
+def test_challenge_heuristic():
+    wall = curl_reap.Response(status=202,
+                              content=b"<title>Just a moment...</title>")
+    page = curl_reap.Response(status=200, content=b"<h1>real content</h1>")
+    assert wall.looks_like_challenge
+    assert not page.looks_like_challenge
+
+
+# ------------------------------------------------- live loopback servers
+
+class _Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        if self.path == "/setcookie":
+            self.send_response(200)
+            self.send_header("Set-Cookie", "reap=1; Path=/")
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"ok")
+        elif self.path == "/whoami":
+            cookie = self.headers.get("Cookie") or ""
+            body = ("cookie:" + cookie).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path.startswith("/hop"):
+            self.send_response(302)
+            self.send_header("Set-Cookie", "hop=yes; Path=/")
+            self.send_header("Location", "/whoami")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+
+@pytest.fixture(scope="module")
+def httpd():
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield "http://127.0.0.1:%d" % server.server_address[1]
+    server.shutdown()
+
+
+def test_cookie_round_trip_against_real_server(httpd):
+    with curl_reap.Session() as s:
+        assert s.get(httpd + "/setcookie").ok
+        r = s.get(httpd + "/whoami")
+        assert r.text == "cookie:reap=1"
+
+
+def test_redirect_hop_cookie_is_captured(httpd):
+    with curl_reap.Session() as s:
+        r = s.get(httpd + "/hop")  # 302 sets hop=yes, lands on /whoami
+        assert "hop=yes" in r.text
+
+
+def test_download_streams_exact_bytes(tmp_path):
+    payload = bytes(range(256)) * 8192  # 2 MiB
+    target = tmp_path / "blob.bin"
+
+    class Blob(_Handler):
+        def do_GET(self):
+            if self.path == "/blob":
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                for i in range(0, len(payload), 65536):
+                    self.wfile.write(payload[i:i + 65536])
+            else:
+                super().do_GET()
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Blob)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        base = "http://127.0.0.1:%d" % server.server_address[1]
+        with curl_reap.Session() as s:
+            r = s.download(base + "/blob", str(target))
+        data = target.read_bytes()
+        assert data == payload
+        assert r.meta["bytes"] == len(payload)
+        assert r.meta["saved_to"] == str(target)
+    finally:
+        server.shutdown()
+
+
+def test_download_decodes_gzip_bodies(tmp_path):
+    import gzip
+
+    payload = b"reap streams compressed bodies" * 4000
+    target = tmp_path / "page.txt"
+
+    class Gz(_Handler):
+        def do_GET(self):
+            if self.path == "/gz":
+                body = gzip.compress(payload)
+                self.send_response(200)
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                super().do_GET()
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Gz)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        base = "http://127.0.0.1:%d" % server.server_address[1]
+        with curl_reap.Session() as s:
+            r = s.download(base + "/gz", str(target))
+        assert target.read_bytes() == payload
+        assert r.meta["bytes"] == len(payload)
+    finally:
+        server.shutdown()

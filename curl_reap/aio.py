@@ -47,6 +47,11 @@ class AsyncSession:
     async def head(self, url, **kwargs):
         return await self.request("HEAD", url, **kwargs)
 
+    async def download(self, url, path, **kwargs):
+        """Stream a URL straight to ``path`` off the event loop's thread."""
+        kwargs.setdefault("timeout", self._session.timeout)
+        return await asyncio.to_thread(self._session.download, url, path, **kwargs)
+
     async def close(self):
         await asyncio.to_thread(self._session.close)
 
