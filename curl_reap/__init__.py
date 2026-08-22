@@ -43,11 +43,13 @@ from .cache import DiskCache
 from .engine import Reaper, run
 from .geocode import Geocoder, geocode
 from .http import (
+    CookieJar,
     HTTPStatusError,
     Response,
     RetryPolicy,
     Session,
     detect_encoding,
+    download,
     fetch,
     get,
     post,
@@ -64,13 +66,29 @@ from .pipelines import (
 from .spider import Request, SitemapSpider, Spider
 from .throttle import AutoThrottle
 
+
+def render(url, **kwargs):
+    """Fetch ``url`` in a real browser (optional Playwright extra)."""
+    from .render import render as _render
+    return _render(url, **kwargs)
+
+
+def render_if_empty(response, **kwargs):
+    """Render only when the plain-HTTP response looks hollow."""
+    from .render import render_if_empty as _rie
+    return _rie(response, **kwargs)
+
+
 __version__ = "1.0.0"
 
 __all__ = [
     # transport
-    "get", "post", "fetch", "Session", "Response", "RetryPolicy",
-    "HTTPStatusError", "PROFILES", "Profile", "DiskCache", "detect_encoding",
+    "get", "post", "fetch", "download", "Session", "Response", "RetryPolicy",
+    "HTTPStatusError", "CookieJar", "PROFILES", "Profile", "DiskCache",
+    "detect_encoding",
     "AsyncSession", "aget", "apost",
+    # rendering (optional playwright extra)
+    "render", "render_if_empty",
     # parsing
     "Selector", "SelectorList",
     "signature", "similarity", "save", "relocate",

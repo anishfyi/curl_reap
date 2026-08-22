@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json as _json
+import os
 import random
 import socket
 import ssl
@@ -29,6 +30,17 @@ RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 52
 _IP_BLOCK_STATUSES = frozenset({403, 407, 429})
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _NO_BODY_STATUSES = frozenset({204, 205, 304})
+_CHALLENGE_MARKERS = (
+    "just a moment",
+    "checking your browser",
+    "attention required",
+    "verify you are human",
+    "javascript is disabled",
+    "enable javascript and cookies",
+    "cf-chl",
+    "_incapsula_resource",
+    "ddos protection by cloudflare",
+)
 _MAX_HEADER_BYTES = 65536
 
 
@@ -263,6 +275,35 @@ class _BufferedSocket:
         del self.buffer[:size]
         return result
 
+    def read_exact_into(self, total, write, bufsize=262144):
+        """Stream exactly ``total`` buffered+wire bytes through ``write``."""
+        remaining = total
+        while remaining > 0:
+            if self.buffer:
+                take = min(len(self.buffer), remaining, bufsize)
+                write(bytes(self.buffer[:take]))
+                del self.buffer[:take]
+                remaining -= take
+            else:
+                self._receive()
+
+    def drain_to_close(self, write, bufsize=262144):
+        """Stream every byte until the peer closes; return the count."""
+        saved = 0
+        while True:
+            if self.buffer:
+                write(bytes(self.buffer))
+                saved += len(self.buffer)
+                self.buffer.clear()
+            try:
+                chunk = self.sock.recv(bufsize)
+            except (OSError, ssl.SSLError) as exc:
+                raise TransportError(str(exc))
+            if not chunk:
+                return saved
+            write(chunk)
+            saved += len(chunk)
+
     def read_to_close(self):
         chunks = [bytes(self.buffer)]
         self.buffer.clear()
@@ -294,7 +335,8 @@ class _Connection:
 
 
 class _RawResponse:
-    def __init__(self, status, reason, version, url, headers, content, cookies=None):
+    def __init__(self, status, reason, version, url, headers, content, cookies=None,
+                 cookie_specs=None, saved_bytes=0):
         self.status_code = status
         self.reason = reason
         self.http_version = version
@@ -302,6 +344,8 @@ class _RawResponse:
         self.headers = headers
         self.content = content
         self.cookies = cookies or {}
+        self.cookie_specs = cookie_specs or []
+        self.saved_bytes = saved_bytes
         encoding = detect_encoding(content, headers) or "utf-8"
         try:
             self.text = content.decode(encoding, "replace")
@@ -310,6 +354,142 @@ class _RawResponse:
 
     def json(self):
         return _json.loads(self.text)
+
+
+class _StreamDecoder:
+    """Incremental Content-Encoding decoder for streaming sinks."""
+
+    def __init__(self, content_encoding):
+        encoding = (content_encoding or "").strip().lower()
+        if encoding in ("", "identity"):
+            raise ValueError("nothing to decode")
+        if "gzip" in encoding:
+            self._dec = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        elif "deflate" in encoding:
+            self._dec = zlib.decompressobj()
+            self._maybe_raw = True
+        else:
+            raise TransportError(
+                "cannot stream a %r encoded body to a file; install brotli "
+                "support upstream or disable that Accept-Encoding" % encoding)
+
+    def feed(self, data):
+        try:
+            return self._dec.decompress(data)
+        except zlib.error:
+            # Some servers send raw-deflate where zlib-wrapped was promised;
+            # restart with the raw window on the first failure.
+            if getattr(self, "_maybe_raw", False):
+                self._dec = zlib.decompressobj(-zlib.MAX_WBITS)
+                self._maybe_raw = False
+                return self._dec.decompress(data)
+            raise TransportError("corrupt %s response body" % "compressed")
+
+    def finish(self):
+        try:
+            return self._dec.flush()
+        except zlib.error:
+            raise TransportError("truncated compressed response body")
+
+
+def _body_streamer(write, headers):
+    """Wrap ``write`` with incremental decoding when the body is compressed."""
+    encoding = (headers.get("Content-Encoding") or "").strip().lower()
+    try:
+        decoder = _StreamDecoder(encoding)
+    except ValueError:
+        return write
+    total = [0]
+
+    def feed(chunk):
+        out = decoder.feed(chunk)
+        if out:
+            write(out)
+            total[0] += len(out)
+        return len(chunk)
+
+    feed.finish = lambda: decoder.finish()
+    return feed
+
+
+class CookieJar:
+    """In-memory cookie store scoped by domain, path and scheme.
+
+    ``Session`` keeps one jar for its lifetime: response cookies are stored
+    automatically (including on every redirect hop) and replayed on matching
+    requests. Thread-safe. Cookies live only as long as the process.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        # name -> {"value","domain","path","secure","expires"}
+        self._cookies = {}
+
+    def absorb(self, url, specs):
+        """Store parsed Set-Cookie attribute dicts from one response."""
+        parts = urlsplit(url)
+        default_domain = (parts.hostname or "").lower()
+        now = time.time()
+        with self._lock:
+            for spec in specs:
+                domain = (spec.get("domain") or default_domain).lower()
+                expires = spec.get("expires")
+                max_age = spec.get("max_age")
+                if max_age:
+                    try:
+                        expires = now + float(max_age)
+                    except (TypeError, ValueError):
+                        pass
+                if expires is not None and expires <= now:
+                    self._cookies.pop(spec["name"], None)
+                    continue
+                self._cookies[spec["name"]] = {
+                    "value": spec["value"],
+                    "domain": domain,
+                    "path": spec.get("path") or "/",
+                    "secure": bool(spec.get("secure")),
+                    "expires": expires,
+                }
+
+    def store(self, url, pairs):
+        """Store plain name/value pairs against ``url``'s host."""
+        self.absorb(url, [{"name": n, "value": v} for n, v in dict(pairs).items()])
+
+    def header_for(self, url):
+        """Cookie header value for ``url``, or empty string when none match."""
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+        secure = parts.scheme.lower() == "https"
+        path = parts.path or "/"
+        now = time.time()
+        pairs = []
+        with self._lock:
+            for name in list(self._cookies):
+                cookie = self._cookies[name]
+                if cookie["expires"] is not None and cookie["expires"] <= now:
+                    del self._cookies[name]
+                    continue
+                if cookie["secure"] and not secure:
+                    continue
+                domain = cookie["domain"]
+                if not (host == domain or domain.startswith(".") and host.endswith(domain)):
+                    continue
+                if not path.startswith(cookie["path"]):
+                    continue
+                pairs.append("%s=%s" % (name, cookie["value"]))
+        return "; ".join(pairs)
+
+    def get_dict(self):
+        with self._lock:
+            return {name: c["value"] for name, c in self._cookies.items()
+                    if c["expires"] is None or c["expires"] > time.time()}
+
+    def clear(self):
+        with self._lock:
+            self._cookies.clear()
+
+    def __repr__(self):
+        return "CookieJar(%d cookies)" % len(self.get_dict())
 
 
 class _Transport:
@@ -414,7 +594,7 @@ class _Transport:
         with self._lock:
             self._pool.setdefault(conn.key, []).append(conn)
 
-    def _response(self, conn, method, url):
+    def _response(self, conn, method, url, sink=None):
         while True:
             head = conn.reader.read_until(b"\r\n\r\n", _MAX_HEADER_BYTES)
             raw_lines = head[:-4].split(b"\r\n")
@@ -454,7 +634,37 @@ class _Transport:
 
         no_body = method.upper() == "HEAD" or status in _NO_BODY_STATUSES or 100 <= status < 200
         reusable = True
+        saved = 0
         if no_body:
+            content = b""
+        elif sink is not None and status not in _REDIRECT_STATUSES:
+            # Stream to disk: bytes land in the file as they come off the
+            # wire, with transparent gzip/deflate decoding.
+            part_path = sink + ".reap-part"
+            try:
+                with open(part_path, "wb") as fh:
+                    feed = _body_streamer(fh.write, headers)
+                    if "chunked" in (headers.get("Transfer-Encoding") or "").lower():
+                        self._read_chunked_into(conn, headers, feed)
+                    elif headers.get("Content-Length") is not None:
+                        length = int(headers.get("Content-Length"))
+                        conn.reader.read_exact_into(length, feed)
+                    else:
+                        conn.reader.drain_to_close(feed)
+                        reusable = False
+                    tail = getattr(feed, "finish", None)
+                    if tail is not None:
+                        rest = tail()
+                        if rest:
+                            fh.write(rest)
+                    saved = fh.tell()
+                os.replace(part_path, sink)
+            except BaseException:
+                try:
+                    os.remove(part_path)
+                except OSError:
+                    pass
+                raise
             content = b""
         elif "chunked" in (headers.get("Transfer-Encoding") or "").lower():
             content = self._read_chunked(conn, headers)
@@ -473,17 +683,64 @@ class _Transport:
         connection_header = (headers.get("Connection") or "").lower()
         if connection_header == "close" or (version == "HTTP/1.0" and connection_header != "keep-alive"):
             reusable = False
-        decoded = _decode_content(content, headers.get("Content-Encoding"))
+        decoded = content if sink is not None else _decode_content(content, headers.get("Content-Encoding"))
         cookies = {}
+        cookie_specs = []
         for name, value in received_headers:
             if name.lower() == "set-cookie":
                 parsed = SimpleCookie()
                 try:
                     parsed.load(value)
-                    cookies.update({key: morsel.value for key, morsel in parsed.items()})
                 except Exception:
-                    pass
-        return _RawResponse(status, reason, version, url, headers, decoded, cookies), reusable
+                    continue
+                for key, morsel in parsed.items():
+                    cookies[key] = morsel.value
+                    expires = None
+                    raw_expires = morsel["expires"]
+                    if raw_expires:
+                        try:
+                            from email.utils import parsedate_to_datetime as _pdt
+                            expires = _pdt(raw_expires).timestamp()
+                        except Exception:
+                            expires = None
+                    cookie_specs.append({
+                        "name": key,
+                        "value": morsel.value,
+                        "domain": (morsel["domain"] or "").lstrip(".").lower(),
+                        "path": morsel["path"] or "/",
+                        "secure": bool(morsel["secure"]),
+                        "max_age": morsel["max-age"],
+                        "expires": expires,
+                    })
+        raw = _RawResponse(status, reason, version, url, headers, decoded, cookies,
+                           cookie_specs=cookie_specs, saved_bytes=saved)
+        return raw, reusable
+
+    @staticmethod
+    def _read_chunked_into(conn, headers, write):
+        """Stream a chunked body straight to ``write``; return bytes written."""
+        saved = 0
+        reader = conn.reader
+        while True:
+            line = reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
+            size_text = line.split(b";", 1)[0].strip()
+            try:
+                size = int(size_text, 16)
+            except ValueError:
+                raise TransportError("invalid chunk size %r" % size_text.decode("latin-1", "replace"))
+            if size < 0:
+                raise TransportError("invalid negative chunk size")
+            if size == 0:
+                while True:
+                    trailer = reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
+                    if not trailer:
+                        return saved
+                    if b":" not in trailer:
+                        raise TransportError("malformed HTTP trailer")
+            reader.read_exact_into(size, write)
+            saved += size
+            if reader.read_exact(2) != b"\r\n":
+                raise TransportError("chunk data is not terminated by CRLF")
 
     @staticmethod
     def _read_chunked(conn, headers):
@@ -512,7 +769,7 @@ class _Transport:
                 raise TransportError("chunk data is not terminated by CRLF")
 
     def _single_request(self, method, url, profile, custom_headers, body,
-                        content_type, timeout, proxy, verify, auth):
+                        content_type, timeout, proxy, verify, auth, sink=None):
         parts = urlsplit(url)
         scheme = parts.scheme.lower()
         if scheme not in ("http", "https"):
@@ -573,7 +830,7 @@ class _Transport:
         reusable = False
         try:
             conn.sock.sendall(payload)
-            response, reusable = self._response(conn, method, url)
+            response, reusable = self._response(conn, method, url, sink=sink)
             if (_find_header(headers, "Connection") or "").lower() == "close":
                 reusable = False
             return response
@@ -586,17 +843,33 @@ class _Transport:
 
     def request(self, method, url, profile, headers=None, body=b"", content_type=None,
                 timeout=30, proxy=None, verify=True, auth=None,
-                allow_redirects=True, max_redirects=10):
+                allow_redirects=True, max_redirects=10, cookie_jar=None, sink=None):
         current_method = method.upper()
         current_url = url
         current_body = body
         current_content_type = content_type
         current_auth = auth
         redirects = 0
+        explicit_cookie = headers is not None and _find_header(headers, "Cookie") is not None
         while True:
+            hop_headers = headers
+            if cookie_jar is not None and not explicit_cookie:
+                # Fresh cookies (including ones set on an earlier hop) are
+                # replayed on every hop of this request.
+                cookie_header = cookie_jar.header_for(current_url)
+                if cookie_header:
+                    hop_headers = tuple(
+                        h for h in (hop_headers or ()) if h[0].lower() != "cookie"
+                    ) + (("Cookie", cookie_header),)
             response = self._single_request(
-                current_method, current_url, profile, headers, current_body,
-                current_content_type, timeout, proxy, verify, current_auth)
+                current_method, current_url, profile, hop_headers, current_body,
+                current_content_type, timeout, proxy, verify, current_auth,
+                sink=sink)
+            if cookie_jar is not None and response.cookie_specs:
+                try:
+                    cookie_jar.absorb(current_url, response.cookie_specs)
+                except Exception:
+                    pass
             location = response.headers.get("Location")
             if not allow_redirects or response.status_code not in _REDIRECT_STATUSES or not location:
                 return response
@@ -724,6 +997,20 @@ class Response:
     def cookies(self):
         return dict(self._cookies)
 
+    @property
+    def looks_like_challenge(self):
+        """True when the body smells like a bot wall instead of real content.
+
+        Heuristic: matches common JS-challenge markers (Cloudflare's interstitial,
+        "enable JavaScript" shells, Incapsula). A True here means the fetch
+        reached the door but the page is rendered client-side; see
+        ``curl_reap.render`` for an escape hatch.
+        """
+        head = (self.text or "")[:6000].lower()
+        if not head:
+            return False
+        return any(marker in head for marker in _CHALLENGE_MARKERS)
+
     def raise_for_status(self):
         if not self.ok:
             raise HTTPStatusError(self)
@@ -839,6 +1126,7 @@ class Session:
         self.allow_redirects = allow_redirects
         self.max_redirects = max_redirects
         self._headers = tuple(_header_items(headers))
+        self.cookies = CookieJar()
         self._counter = 0
         self._counter_lock = threading.Lock()
         self._transport = _Transport()
@@ -875,6 +1163,7 @@ class Session:
     def request(self, method, url, **kwargs):
         meta = kwargs.pop("meta", None)
         no_cache = kwargs.pop("no_cache", False)
+        sink = kwargs.pop("_sink", None) or kwargs.pop("sink", None)
         policy = kwargs.pop("retry_policy", None) or self.retry_policy
         if "retries" in kwargs:
             policy = RetryPolicy(retries=kwargs.pop("retries"), backoff=policy.backoff,
@@ -899,6 +1188,10 @@ class Session:
         body, content_type = _encode_body(data=data, json=json_data)
         combined_headers = tuple(_merge_headers(self._headers, request_headers))
         request_url = _url_with_params(url, params)
+        if sink is not None:
+            if not isinstance(sink, str):
+                raise TypeError("sink must be a file path string")
+            no_cache = True
 
         cacheable = (self.cache is not None and not no_cache and
                      method.upper() == "GET" and self.cache.accepts(method))
@@ -937,7 +1230,8 @@ class Session:
                     method, request_url, selected_profile, headers=combined_headers,
                     body=body, content_type=content_type, timeout=timeout,
                     proxy=selected_proxy, verify=verify, auth=auth,
-                    allow_redirects=allow_redirects, max_redirects=max_redirects)
+                    allow_redirects=allow_redirects, max_redirects=max_redirects,
+                    cookie_jar=self.cookies, sink=sink)
             except (TransportError, OSError, ssl.SSLError):
                 if attempt >= policy.retries:
                     raise
@@ -965,6 +1259,9 @@ class Session:
                 continue
             if cacheable and response.ok:
                 self.cache.set(method, url, params, response)
+            if sink is not None:
+                response.meta = dict(response.meta or {},
+                                     saved_to=sink, bytes=raw.saved_bytes)
             if self.on_response:
                 self.on_response(response)
             return response
@@ -983,6 +1280,18 @@ class Session:
 
     def delete(self, url, **kwargs):
         return self.request("DELETE", url, **kwargs)
+
+    def download(self, url, path, **kwargs):
+        """Stream a URL straight to ``path`` on disk.
+
+        Bytes land in the file as they arrive off the wire (constant memory,
+        whatever the size), with gzip/deflate transport compression decoded
+        transparently. Retries and redirects still apply; a retry restarts
+        the file cleanly. The returned ``Response`` carries
+        ``meta["saved_to"]`` and ``meta["bytes"]``.
+        """
+        kwargs.setdefault("timeout", self.timeout)
+        return self.request("GET", url, sink=str(path), **kwargs)
 
     def close(self):
         self._transport.close()
@@ -1020,7 +1329,12 @@ def fetch(url, **kwargs):
     return get(url, **kwargs)
 
 
+def download(url, path, **kwargs):
+    """One-shot streaming download through the shared session."""
+    return _session().download(url, path, **kwargs)
+
+
 __all__ = [
     "Session", "Response", "RetryPolicy", "HTTPStatusError", "TransportError",
-    "detect_encoding", "get", "post", "fetch",
+    "CookieJar", "detect_encoding", "get", "post", "fetch", "download",
 ]
