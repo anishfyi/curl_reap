@@ -48,6 +48,7 @@ from .http import (
     Response,
     RetryPolicy,
     Session,
+    TransportError,
     detect_encoding,
     download,
     fetch,
@@ -84,7 +85,8 @@ __version__ = "1.0.0"
 __all__ = [
     # transport
     "get", "post", "fetch", "download", "Session", "Response", "RetryPolicy",
-    "HTTPStatusError", "CookieJar", "PROFILES", "Profile", "DiskCache",
+    "HTTPStatusError", "TransportError", "CookieJar", "PROFILES", "Profile",
+    "DiskCache",
     "detect_encoding",
     "AsyncSession", "aget", "apost",
     # rendering (optional playwright extra)
