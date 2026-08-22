@@ -20,19 +20,18 @@ def test_304_serves_cached_body(tmp_path):
     s = curl_reap.Session(cache=cache)
     sent_headers = []
 
-    def fake(method, url, **kw):
+    def fake(method, url, profile, **kw):
         sent_headers.append(kw.get("headers") or {})
         if len(sent_headers) == 1:
             return _FakeRaw(200, {"ETag": '"v1"', "Content-Type": "text/html"}, b"<h1>hello</h1>")
         return _FakeRaw(304, {}, b"")
 
-    s._s.request = fake
+    s._transport.request = fake
 
     r1 = s.get("http://x/")
     assert r1.status == 200 and "hello" in r1.text and not r1.from_cache
 
     time.sleep(0.02)  # let the TTL lapse so the next call revalidates
     r2 = s.get("http://x/")
-    assert "If-None-Match" in sent_headers[1]
-    assert sent_headers[1]["If-None-Match"] == '"v1"'
+    assert ("If-None-Match", '"v1"') in sent_headers[1]
     assert r2.status == 200 and "hello" in r2.text and r2.from_cache

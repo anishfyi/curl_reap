@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>curl_reap: scrape past TLS fingerprint blocking in Python</title>
 <!-- seo:anishfyi -->
-<meta name="description" content="curl_reap combines browser-grade TLS and JA3 impersonation, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single Python library.">
+<meta name="description" content="curl_reap combines browser-grade TLS fingerprint profiles written in pure Python, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single small library. Only two dependencies: lxml and cssselect.">
 <meta name="author" content="Anish Kr Singh">
 <link rel="canonical" href="https://anishfyi.com/curl_reap/">
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
@@ -15,7 +16,7 @@
 <meta property="og:locale" content="en_IN">
 <meta property="og:url" content="https://anishfyi.com/curl_reap/">
 <meta property="og:title" content="curl_reap: scrape past TLS fingerprint blocking in Python">
-<meta property="og:description" content="Browser-grade TLS impersonation, self-healing selectors, structured extraction and a concurrent crawl engine in one small Python library. pip install curl_reap.">
+<meta property="og:description" content="Browser-grade TLS profiles in pure Python, self-healing selectors, structured extraction and a concurrent crawl engine in one small library. pip install curl-reap.">
 <meta property="og:image" content="https://anishfyi.com/curl_reap/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -23,7 +24,7 @@
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="curl_reap: scrape past TLS fingerprint blocking in Python">
-<meta name="twitter:description" content="Browser-grade TLS impersonation, self-healing selectors, structured extraction and a concurrent crawl engine in one small Python library. pip install curl_reap.">
+<meta name="twitter:description" content="Browser-grade TLS profiles in pure Python, self-healing selectors, structured extraction and a concurrent crawl engine in one small library. pip install curl-reap.">
 <meta name="twitter:image" content="https://anishfyi.com/curl_reap/og.png">
 <meta name="twitter:image:alt" content="curl_reap, reap the web">
 <script type="application/ld+json">
@@ -35,7 +36,7 @@
       "@id": "https://anishfyi.com/curl_reap/#webpage",
       "url": "https://anishfyi.com/curl_reap/",
       "name": "curl_reap: scrape past TLS fingerprint blocking in Python",
-      "description": "curl_reap combines browser-grade TLS and JA3 impersonation, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single Python library.",
+      "description": "curl_reap combines browser-grade TLS fingerprint profiles written in pure Python, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single small library.",
       "inLanguage": "en",
       "isPartOf": {
         "@id": "https://anishfyi.com/#website"
@@ -56,7 +57,7 @@
       "@id": "https://anishfyi.com/curl_reap/#software",
       "name": "curl_reap",
       "url": "https://anishfyi.com/curl_reap/",
-      "description": "curl_reap combines browser-grade TLS and JA3 impersonation, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single Python library.",
+      "description": "curl_reap combines browser-grade TLS fingerprint profiles written in pure Python, self-healing CSS and XPath selectors, one-call structured extraction and a concurrent crawl engine in a single small library.",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
       "author": {
@@ -73,15 +74,16 @@
         "priceCurrency": "USD"
       },
       "featureList": [
-        "Sends a real Chrome or Safari TLS and JA3 fingerprint through curl_cffi, so sites that block stock Python clients with a 403 serve the page.",
+        "Sends a browser-shaped TLS fingerprint (chrome, firefox or safari profile) so sites that block stock Python clients with a 403 serve the page.",
+        "The transport is written from scratch on the Python standard library: no curl binding, no compiled extensions, no browser download.",
         "Self-healing CSS and XPath selectors re-find an element after a site renames a class.",
-        "One-call structured extraction to JSON-LD, tables and markdown.",
-        "Includes disk caching, retries and a hand-written concurrent crawl engine.",
-        "Collapses three tools into one: curl_cffi for the handshake, Scrapling for healing selectors, Scrapy for the crawl.",
-        "MIT licensed, current version 0.3.0, published to PyPI as `curl-reap`.",
+        "One-call structured extraction to JSON-LD, meta tags, tables and markdown.",
+        "Disk caching, smart retries, proxy rotation and a hand-written concurrent crawl engine.",
+        "A reap command line for fetching, extracting and crawling without writing a script.",
+        "MIT licensed, current version 1.0.0, published to PyPI as `curl-reap`, depending only on lxml and cssselect.",
         "Sponsored by NodeMaven, a disclosed commercial relationship."
       ],
-      "softwareVersion": "0.3.0",
+      "softwareVersion": "1.0.0",
       "license": "https://opensource.org/licenses/MIT",
       "programmingLanguage": "Python",
       "codeRepository": "https://github.com/anishfyi/curl_reap",
@@ -101,7 +103,7 @@
       "about": {
         "@id": "https://anishfyi.com/curl_reap/#software"
       },
-      "description": "One Python library for getting past TLS fingerprinting, surviving markup changes, and crawling at scale."
+      "description": "One pure-Python library for getting past TLS fingerprinting, surviving markup changes, and crawling at scale."
     },
     {
       "@type": "BreadcrumbList",
@@ -131,212 +133,384 @@
 }
 </script>
 <!-- /seo:anishfyi -->
-<link rel="icon" href="logo.svg" type="image/svg+xml" />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
-<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<meta name="theme-color" content="#FAF6EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171208" media="(prefers-color-scheme: dark)">
 <style>
   :root{
-    --gold:#C9871A; --gold-soft:#f3e6c8; --gold-bg:#fbf5e8;
-    --ink:#1c1a16; --muted:#6b6358; --faint:#9a9085; --line:#e7e0d4;
-    --cream:#faf8f3; --card:#ffffff; --code-bg:#1e1b16;
+    --bg:#FAF6EE; --surface:#FFFFFF; --ink:#241D11; --body-ink:#3A3222;
+    --muted:#6C6150; --faint:#9A8F7B; --line:#E8DFCB;
+    --accent:#9C660D; --accent-text:#8A5A0B; --accent-soft:#F5EBD3; --cta-ink:#FFFFFF;
+    --ok:#237947; --err:#B23E2A;
+    --code-bg:#221B0F; --code-border:#39301D;
+    --header-bg:rgba(250,246,238,.92);
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --pad:clamp(16px,5vw,32px);
   }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth;scroll-padding-top:84px}
-  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--cream);line-height:1.6;font-size:15.5px;overflow-x:hidden}
-  a{color:var(--gold);text-decoration:none}
-  a:hover{text-decoration:underline}
-  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.86em}
-  [x-cloak]{display:none!important}
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#171208; --surface:#201A0E; --ink:#F0E7D3; --body-ink:#D6CBB2;
+      --muted:#A79A7E; --faint:#7E7359; --line:#332B18;
+      --accent:#DFA733; --accent-text:#E4B04C; --accent-soft:#2A2210; --cta-ink:#1D1607;
+      --ok:#5FC784; --err:#F2705B;
+      --code-bg:#110D05; --code-border:#2C2412;
+      --header-bg:rgba(23,18,8,.92);
+    }
+  }
 
-  /* top bar */
-  header{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px;
-    padding:13px clamp(16px,4vw,32px);background:rgba(250,248,243,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-  header .brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:17px;color:var(--ink)}
-  header .brand img{height:26px}
-  header .brand b{color:var(--gold)}
-  header .grow{flex:1}
-  header .hlink{font-weight:600;font-size:14px;color:var(--muted)}
-  header .hlink:hover{color:var(--ink);text-decoration:none}
-  header .pill{background:var(--ink);color:#fff;padding:8px 15px;border-radius:9px;font-weight:600;font-size:13.5px}
-  header .pill:hover{text-decoration:none;opacity:.9}
-  .menu-btn{display:none;background:none;border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:16px}
+  *,*::before,*::after{box-sizing:border-box}
+  html{scroll-padding-top:84px;-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--body-ink);
+    font-family:var(--sans);font-size:clamp(.96rem,.9rem + .3vw,1.03rem);
+    line-height:1.65;overflow-x:clip;
+  }
+  img{max-width:100%;height:auto}
+  a{color:var(--accent-text)}
+  a:hover{text-decoration-thickness:2px}
+  :focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:4px}
+  .wrap{max-width:1080px;margin-inline:auto;padding-inline:var(--pad)}
 
-  .layout{display:grid;grid-template-columns:248px minmax(0,1fr);gap:0;max-width:1180px;margin:0 auto}
+  h1,h2,h3{color:var(--ink);font-weight:800;line-height:1.15;margin:0 0 14px;letter-spacing:-.015em;overflow-wrap:break-word}
+  h1{font-size:clamp(2.3rem,7vw,3.6rem);line-height:1.04;letter-spacing:-.025em}
+  h2{font-size:clamp(1.5rem,4vw,1.95rem)}
+  h3{font-size:clamp(1.05rem,2.5vw,1.2rem);font-weight:700;margin:30px 0 10px}
+  p{margin:0 0 14px;max-width:70ch}
+  ul{margin:0 0 14px;padding-left:22px;max-width:70ch}
+  li{margin:6px 0}
+  .eyebrow{font:600 .72rem var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--accent-text);margin:0 0 12px}
 
-  /* sidebar */
-  nav.side{position:sticky;top:57px;align-self:start;height:calc(100svh - 57px);overflow-y:auto;
-    padding:24px 14px 60px;border-right:1px solid var(--line)}
-  nav.side .grp{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:18px 10px 6px}
-  nav.side a{display:block;padding:6px 10px;border-radius:8px;color:var(--muted);font-weight:500;font-size:14px}
-  nav.side a:hover{background:var(--gold-bg);color:var(--ink);text-decoration:none}
-  nav.side a.on{background:var(--gold-bg);color:var(--gold);font-weight:600}
+  code{font-family:var(--mono)}
+  code.inline{font-size:.85em;background:var(--accent-soft);color:var(--accent-text);padding:2px 6px;border-radius:6px;overflow-wrap:anywhere}
 
-  main{padding:40px clamp(18px,4vw,56px) 120px;min-width:0;overflow-x:hidden}
-  section{scroll-margin-top:80px;margin-bottom:52px}
-  h1{font-size:clamp(30px,5vw,44px);line-height:1.08;letter-spacing:-.02em;margin-bottom:14px}
-  h2{font-size:26px;letter-spacing:-.01em;margin:8px 0 14px;padding-top:8px}
-  h3{font-size:18px;margin:26px 0 8px;color:var(--ink)}
-  p{margin:0 0 14px;color:#322e28}
-  .lead{font-size:18px;color:var(--muted);max-width:62ch;margin-bottom:22px}
-  ul{margin:0 0 14px 20px}li{margin:5px 0}
-  .pill-row{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 8px}
-  .cta{background:var(--gold);color:#fff;padding:11px 20px;border-radius:10px;font-weight:600}
-  .cta:hover{text-decoration:none;opacity:.92}
-  .cta.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+  .skip{position:absolute;left:12px;top:-60px;z-index:100;background:var(--ink);color:var(--bg);
+    padding:14px 20px;border-radius:0 0 12px 12px;font-weight:700;text-decoration:none}
+  .skip:focus{top:0}
 
-  /* code blocks */
-  .code{position:relative;margin:14px 0 20px;border-radius:12px;overflow:hidden;border:1px solid #2a261f}
-  .code pre{margin:0;padding:16px 18px;background:var(--code-bg);overflow-x:auto}
-  .code pre code{font-size:13.5px;line-height:1.65;background:none;padding:0}
-  .code .cp{position:absolute;top:8px;right:8px;background:#2f2a22;color:#cbb994;border:none;border-radius:7px;
-    padding:5px 9px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif}
-  .code .cp:hover{background:#3b352b;color:#fff}
-  code.inline{background:var(--gold-bg);color:#9a6a12;padding:1.5px 6px;border-radius:5px}
+  /* ---------- header / nav ---------- */
+  header{position:sticky;top:0;z-index:40;background:var(--header-bg);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .topnav{display:flex;align-items:center;position:relative;min-height:62px}
+  .brand{display:inline-flex;align-items:center;gap:9px;min-height:44px;padding-right:10px;
+    font-weight:700;font-size:1.05rem;color:var(--ink);text-decoration:none}
+  .brand img{height:26px;width:auto}
+  .brand b{color:var(--accent-text)}
 
-  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:16px 0;border:1px solid var(--line);border-radius:10px}
-  table{width:100%;border-collapse:collapse;font-size:14px}
-  .tablewrap table{margin:0}
-  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-  tr:last-child td{border-bottom:none}
-  th{font-weight:600;color:var(--muted);background:var(--gold-bg)}
-  td code{color:#9a6a12}
-  .yes{color:#1f9d57;font-weight:700}.no{color:#c0392b}
+  .nav-toggle{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+    clip:rect(0 0 0 0);white-space:nowrap;border:0;appearance:none}
+  .nav-btn{display:flex;align-items:center;justify-content:center;width:50px;height:44px;margin-left:auto;
+    border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer}
+  .nav-toggle:focus-visible ~ .nav-btn{outline:2px solid var(--accent-text);outline-offset:2px}
+  .bars{position:relative;display:block;width:18px;height:2px;background:var(--ink);border-radius:2px}
+  .bars::before,.bars::after{content:"";position:absolute;left:0;width:18px;height:2px;background:var(--ink);border-radius:2px}
+  .bars::before{top:-6px}
+  .bars::after{top:6px}
+  .nav-toggle:checked ~ .nav-btn .bars{background:transparent}
+  .nav-toggle:checked ~ .nav-btn .bars::before{transform:translateY(6px) rotate(45deg)}
+  .nav-toggle:checked ~ .nav-btn .bars::after{transform:translateY(-6px) rotate(-45deg)}
 
-  .note{background:var(--gold-bg);border:1px solid var(--gold-soft);border-left:3px solid var(--gold);
-    border-radius:10px;padding:14px 16px;margin:16px 0;font-size:14.5px}
-  .note b{color:#9a6a12}
-  .note.legal{border:1.5px solid var(--gold);border-left-width:5px;background:#fdf3e0;font-size:15px;line-height:1.55}
-  .api{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;background:var(--card)}
-  .api .sig{font-family:'JetBrains Mono',monospace;font-size:13.5px;color:var(--ink);font-weight:600;margin-bottom:8px;word-break:break-word}
-  .api .sig b{color:var(--gold)}
+  .nav-links{display:none;position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:45;
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 18px 44px rgba(20,14,4,.18);padding:8px;max-height:calc(100vh - 90px);overflow-y:auto}
+  .nav-toggle:checked ~ .nav-links{display:block}
+  .nav-links a{display:flex;align-items:center;min-height:48px;padding:0 14px;border-radius:10px;
+    color:var(--ink);font-weight:600;text-decoration:none}
+  .nav-links a:hover{background:var(--accent-soft)}
+  .nav-links a.pill{background:var(--accent);color:var(--cta-ink);margin-top:6px;justify-content:center}
 
-  /* sponsors modal */
-  .sponsor-modal{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;padding:24px}
+  @media (min-width:768px){
+    .nav-btn,.nav-toggle{display:none}
+    .nav-links{display:flex;position:static;margin-left:auto;align-items:center;gap:2px;
+      background:none;border:none;box-shadow:none;border-radius:0;padding:0;max-height:none;overflow:visible}
+    .nav-links a{min-height:44px;padding:0 11px;font-size:.88rem;color:var(--muted);border-radius:10px}
+    .nav-links a:hover{color:var(--ink);background:var(--accent-soft)}
+    .nav-links a.pill{background:var(--ink);color:var(--bg);margin:0 0 0 8px;padding:0 16px;font-weight:700}
+    .nav-links a.pill:hover{background:var(--accent);color:var(--cta-ink)}
+  }
+
+  /* ---------- hero ---------- */
+  .hero{padding:clamp(46px,9vw,88px) 0 clamp(40px,7vw,64px)}
+  .hero-grid{display:grid;gap:clamp(30px,5vw,48px)}
+  @media (min-width:980px){.hero-grid{grid-template-columns:1.04fr .96fr;align-items:center}}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px;padding:0;list-style:none}
+  .badges li{font:600 .74rem var(--mono);letter-spacing:.04em;color:var(--muted);
+    border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px}
+  .badges li.v{color:var(--accent-text);border-color:var(--accent-text);background:var(--accent-soft)}
+  .gd{color:var(--accent-text)}
+  .lead{font-size:clamp(1.04rem,1rem + 1vw,1.24rem);color:var(--muted);max-width:34em;line-height:1.6}
+  .cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+  .cta{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 22px;
+    border-radius:12px;background:var(--accent);color:var(--cta-ink);font-weight:700;text-decoration:none}
+  .cta:hover{opacity:.92}
+  .cta.ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+  .cta.ghost:hover{opacity:1;border-color:var(--accent-text);color:var(--accent-text)}
+  @media (max-width:419px){.cta{flex:1 1 100%}}
+  .hero-pip{margin-top:18px;font:600 .84rem var(--mono);color:var(--muted)}
+  .hero-pip b{color:var(--accent-text);font-weight:600}
+
+  .term{margin:0;background:var(--code-bg);border:1px solid var(--code-border);border-radius:14px;
+    overflow:hidden;box-shadow:0 24px 60px rgba(20,14,4,.16)}
+  .term-bar{display:flex;align-items:center;gap:7px;padding:11px 15px;border-bottom:1px solid var(--code-border)}
+  .term-bar i{width:10px;height:10px;border-radius:50%;background:#57492B}
+  .term-bar span{margin-left:8px;font:600 .68rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#8C8168}
+  .term pre{margin:0;padding:16px 18px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .term code{font-size:.8rem;line-height:1.75;color:#D9D0B8;white-space:pre}
+  .tp{color:#E0A83D}
+  .tc{color:#8C8168}
+  .terr{color:#F2705B;font-weight:700}
+  .tok{color:#5FC784;font-weight:700}
+
+  /* ---------- sections ---------- */
+  main section{border-top:1px solid var(--line);padding:clamp(44px,8vw,72px) 0;scroll-margin-top:80px}
+  main .hero{border-top:none}
+
+  .grid-features{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin-top:28px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .card .k{display:inline-block;font:600 .76rem var(--mono);color:var(--accent-text);background:var(--accent-soft);
+    padding:5px 9px;border-radius:7px;margin-bottom:13px;overflow-wrap:anywhere}
+  .card h3{margin:0 0 8px;font-size:1.05rem}
+  .card p{margin:0;font-size:.92rem;color:var(--muted)}
+
+  .code{position:relative;margin:16px 0 22px;background:var(--code-bg);border:1px solid var(--code-border);
+    border-radius:12px;overflow:hidden}
+  .code figcaption{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:5px 6px 5px 15px;border-bottom:1px solid var(--code-border)}
+  .code .lang{font:600 .68rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#8C8168}
+  .code pre{margin:0;padding:15px 17px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .code pre code{font-size:.8rem;line-height:1.7;color:#DCD3BC;white-space:pre}
+  .cp{min-height:44px;min-width:64px;padding:0 14px;border:1px solid var(--code-border);border-radius:9px;
+    background:#2C2412;color:#CBB994;font:600 .74rem var(--mono);cursor:pointer}
+  .cp:hover{color:#F0E7D3;border-color:#57492B}
+  .cp.ok{color:#5FC784}
+
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:12px;
+    margin:18px 0;background:var(--surface)}
+  table{width:100%;border-collapse:collapse;font-size:.88rem;min-width:560px}
+  caption{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0)}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--body-ink)}
+  thead th{font:600 .7rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--accent-soft)}
+  tbody th{font-weight:600;color:var(--ink)}
+  tr:last-child td,tr:last-child th{border-bottom:none}
+  td code{font-size:.82rem;color:var(--accent-text);overflow-wrap:anywhere}
+  .yes{color:var(--ok);font-weight:700}
+  .no{color:var(--err);font-weight:600}
+  td.us{font-weight:800;color:var(--ok)}
+
+  .api{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:12px;padding:16px 18px;margin:14px 0}
+  .api .sig{font:600 .84rem var(--mono);line-height:1.6;color:var(--ink);margin-bottom:8px;overflow-wrap:anywhere}
+  .api .sig b{color:var(--accent-text)}
+  .api p{margin:0;font-size:.92rem;color:var(--muted)}
+
+  .note{background:var(--accent-soft);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:12px;padding:14px 16px;margin:18px 0;font-size:.92rem}
+  .note b{color:var(--accent-text)}
+  .note.legal{border-color:var(--accent);border-left-width:5px;font-size:.96rem}
+  .note.legal b{color:var(--accent-text)}
+
+  footer{border-top:1px solid var(--line);padding:30px 0 44px;color:var(--faint);font-size:.86rem;text-align:center}
+  footer a{display:inline-block;padding:12px 6px;color:var(--muted)}
+
+  /* ---------- sponsors modal ---------- */
+  .sponsor-modal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:20px}
   .sponsor-modal:target{display:flex}
-  .sponsor-scrim{position:absolute;inset:0;background:rgba(28,26,22,.5);backdrop-filter:blur(3px)}
-  .sponsor-card{position:relative;z-index:1;background:var(--card);border:1px solid var(--line);border-radius:16px;
-    padding:32px 34px 28px;text-align:center;max-width:420px;width:100%;max-height:88vh;overflow-y:auto;
-    box-shadow:0 24px 70px rgba(28,26,22,.26)}
-  .sponsor-close{position:absolute;top:12px;right:16px;color:var(--faint);font-size:22px;line-height:1;text-decoration:none}
-  .sponsor-close:hover{color:var(--ink)}
-  .sponsor-eyebrow{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:16px}
-  .sponsor-logo{display:inline-flex;align-items:center;opacity:.95;transition:opacity .15s}
-  .sponsor-logo:hover{opacity:1;text-decoration:none}
-  .sponsor-logo img{height:38px;width:auto}
-  .sponsor-tagline{margin-top:18px;font-size:13px;line-height:1.6;color:var(--muted)}
-  .sponsor-why{margin:16px 0 0;padding:0;list-style:none;text-align:left}
-  .sponsor-why li{position:relative;padding-left:22px;margin:7px 0;font-size:12.5px;line-height:1.5;color:var(--ink)}
-  .sponsor-why li::before{content:"";position:absolute;left:5px;top:6px;width:6px;height:6px;border-radius:50%;background:var(--gold)}
-  .sponsor-codes-label{margin-top:20px;font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .sponsor-scrim{position:absolute;inset:0;background:rgba(15,11,4,.55)}
+  .sponsor-card{position:relative;z-index:1;background:var(--surface);border:1px solid var(--line);border-radius:16px;
+    padding:30px 26px 26px;text-align:center;max-width:430px;width:100%;max-height:88vh;overflow-y:auto;
+    box-shadow:0 24px 70px rgba(15,11,4,.3)}
+  .sponsor-close{position:absolute;top:6px;right:6px;display:flex;align-items:center;justify-content:center;
+    width:44px;height:44px;border-radius:10px;color:var(--faint);font-size:22px;text-decoration:none}
+  .sponsor-close:hover{color:var(--ink);background:var(--accent-soft)}
+  .sponsor-eyebrow{font:600 .68rem var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--faint);margin-bottom:16px}
+  .sponsor-logo{display:inline-flex;align-items:center;padding:12px 18px;border-radius:12px;background:#FFFFFF;
+    border:1px solid var(--line)}
+  .sponsor-logo img{height:36px;width:auto}
+  .sponsor-tagline{margin:18px 0 0;font-size:.84rem;line-height:1.6;color:var(--muted)}
+  .sponsor-why{margin:16px 0 0;padding:0;list-style:none;text-align:left;max-width:none}
+  .sponsor-why li{position:relative;padding-left:20px;margin:7px 0;font-size:.8rem;line-height:1.5;color:var(--body-ink)}
+  .sponsor-why li::before{content:"";position:absolute;left:4px;top:7px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  .sponsor-codes-label{margin-top:20px;font:600 .64rem var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
   .sponsor-codes{display:flex;flex-direction:column;gap:8px;margin-top:12px}
-  .sponsor-code{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--gold-bg)}
-  .sponsor-code b{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;color:#9a6a12;letter-spacing:.02em}
-  .sponsor-code span{font-size:11.5px;color:var(--muted)}
-  .sponsor-cta{display:inline-block;margin-top:20px;padding:10px 22px;border-radius:10px;background:var(--gold);color:#fff;font-weight:700;font-size:13px;text-decoration:none;transition:opacity .15s}
-  .sponsor-cta:hover{opacity:.92;text-decoration:none}
+  .sponsor-code{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;
+    padding:8px 13px;border:1px solid var(--line);border-radius:10px;background:var(--accent-soft)}
+  .sponsor-code b{font:700 .8rem var(--mono);color:var(--accent-text);letter-spacing:.02em}
+  .sponsor-code span{font-size:.74rem;color:var(--muted);text-align:right}
+  .sponsor-cta{display:inline-flex;align-items:center;justify-content:center;min-height:48px;margin-top:20px;
+    padding:0 24px;border-radius:12px;background:var(--accent);color:var(--cta-ink);font-weight:700;
+    font-size:.86rem;text-decoration:none}
+  .sponsor-cta:hover{opacity:.92}
 
-  footer{border-top:1px solid var(--line);padding:30px clamp(18px,4vw,56px);color:var(--faint);font-size:13.5px;text-align:center}
-
-  @media(max-width:860px){
-    .layout{grid-template-columns:1fr}
-    nav.side{position:fixed;top:0;left:0;height:100svh;width:280px;background:var(--cream);z-index:60;
-      transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 40px rgba(0,0,0,.15);padding-top:70px}
-    nav.side.open{transform:none}
-    .menu-btn{display:inline-block}
-    .scrim{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:55}
-  }
-  @media(max-width:560px){
-    main{padding:26px 16px 90px}
-    h1{font-size:32px}
-    .lead{font-size:16px}
-    h2{font-size:22px}
-    table{font-size:12px}
-    th,td{padding:7px 8px}
-    .api .sig{font-size:12.5px}
-    .pill-row{flex-direction:column}
-    .cta,.cta.ghost{text-align:center}
+  /* ---------- motion ---------- */
+  @media (prefers-reduced-motion: no-preference){
+    html{scroll-behavior:smooth}
+    .skip{transition:top .15s ease}
+    a,.cta,.cp,.nav-links a,.nav-btn,.sponsor-close{transition:background-color .15s ease,color .15s ease,border-color .15s ease,opacity .15s ease}
+    .bars,.bars::before,.bars::after{transition:transform .18s ease,background-color .18s ease}
+    .hero-copy,.term{animation:rise .55s ease both}
+    .term{animation-delay:.12s}
+    @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
   }
 </style>
 </head>
-<body x-data="docs()" x-init="init()">
+<body id="top">
+
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
-  <button class="menu-btn" @click="menu=!menu" aria-label="Menu">&#9776;</button>
-  <a class="brand" href="#intro"><img src="logo-mark.svg" alt=""/><span>curl<b>_reap</b></span></a>
-  <span class="grow"></span>
-  <a class="hlink" href="#sponsors">Sponsors</a>
-  <a class="hlink" href="https://pypi.org/project/curl-reap/" target="_blank" rel="noopener">PyPI</a>
-  <a class="pill" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">GitHub</a>
+  <nav class="wrap topnav" aria-label="Primary">
+    <a class="brand" href="#top" aria-label="curl_reap, back to top">
+      <img src="logo-mark.svg" alt="" width="26" height="28">
+      <span>curl<b>_reap</b></span>
+    </a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-label="Toggle navigation menu">
+    <label class="nav-btn" for="nav-toggle" aria-hidden="true"><span class="bars"></span></label>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#quickstart">Quick start</a>
+      <a href="#cli">CLI</a>
+      <a href="#api">API</a>
+      <a href="#sponsors">Sponsors</a>
+      <a href="https://pypi.org/project/curl-reap/" target="_blank" rel="noopener">PyPI</a>
+      <a class="pill" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </nav>
 </header>
 
-<div class="scrim" x-show="menu" x-cloak @click="menu=false"></div>
+<main id="main">
 
-<div class="layout">
-  <nav class="side" :class="{open:menu}" @click="menu=false">
-    <div class="grp">Get started</div>
-    <a href="#intro">Overview</a>
-    <a href="#install">Installation</a>
-    <a href="#quickstart">Quick start</a>
-    <div class="grp">Core</div>
-    <a href="#transport">Transport &amp; impersonation</a>
-    <a href="#selectors">Selectors &amp; parsing</a>
-    <a href="#healing">Self-healing selectors</a>
-    <a href="#finders">Finders</a>
-    <a href="#geocode">Geocoding</a>
-    <div class="grp">Crawl</div>
-    <a href="#engine">Crawl engine</a>
-    <a href="#throttle">AutoThrottle</a>
-    <a href="#pipelines">Pipelines</a>
-    <div class="grp">Reference</div>
-    <a href="#api">API reference</a>
-    <a href="#compare">Comparison</a>
-    <a href="#responsible">Legal &amp; use</a>
-  </nav>
-
-  <main>
-    <section id="intro">
-      <h1>Reap the web.</h1>
-      <p class="lead">curl_reap is one small Python library that puts three scraping superpowers behind a single friendly API: browser-grade TLS impersonation, self-healing selectors that survive markup changes, and a concurrent crawl engine.</p>
-      <div class="pill-row">
-        <a class="cta" href="#quickstart">Quick start</a>
-        <a class="cta ghost" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">Star on GitHub</a>
+  <section class="hero" id="intro" aria-labelledby="hero-title">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <ul class="badges" aria-label="Release facts">
+          <li class="v">v1.0.0</li>
+          <li>pure Python</li>
+          <li>MIT</li>
+          <li>3.9+</li>
+        </ul>
+        <h1 id="hero-title">Reap the web<span class="gd">.</span></h1>
+        <p class="lead">One small Python library with three scraping superpowers: browser-grade TLS profiles written from scratch on the standard library, self-healing selectors that survive markup changes, and a concurrent crawl engine.</p>
+        <div class="cta-row">
+          <a class="cta" href="#quickstart">Quick start</a>
+          <a class="cta ghost" href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">Star on GitHub</a>
+        </div>
+        <p class="hero-pip">$ <b>pip install curl-reap</b> &middot; only lxml and cssselect come along</p>
       </div>
 
+      <figure class="term" aria-label="Terminal session: a stock Python client receives HTTP 403, curl_reap with the chrome profile receives HTTP 200">
+        <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>the 403 problem</span></div>
+        <pre><code><span class="tp">$</span> python -q
+<span class="tp">&gt;&gt;&gt;</span> import requests                <span class="tc"># stock TLS fingerprint</span>
+<span class="tp">&gt;&gt;&gt;</span> requests.get("https://blocked.example").status_code
+<span class="terr">403</span>
+<span class="tp">&gt;&gt;&gt;</span> import curl_reap as reap       <span class="tc"># browser TLS profile, pure Python</span>
+<span class="tp">&gt;&gt;&gt;</span> reap.get("https://blocked.example", profile="chrome").status
+<span class="tok">200</span></code></pre>
+      </figure>
+    </div>
+  </section>
 
-      <div class="tablewrap"><table>
-        <tr><th></th><th>curl_cffi</th><th>Scrapy</th><th>Scrapling</th><th>curl_reap</th></tr>
-        <tr><td>Real browser TLS / JA3</td><td class="yes">yes</td><td class="no">no</td><td>partial</td><td class="yes">yes</td></tr>
-        <tr><td>Parser built in</td><td class="no">no</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td></tr>
-        <tr><td>Self-healing selectors</td><td class="no">no</td><td class="no">no</td><td class="yes">yes</td><td class="yes">yes</td></tr>
-        <tr><td>Concurrent crawl engine</td><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="yes">yes</td></tr>
-        <tr><td>AutoThrottle, retries, pipelines</td><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="yes">yes</td></tr>
-      </table></div>
-    </section>
+  <section id="features" aria-labelledby="features-title">
+    <div class="wrap">
+      <p class="eyebrow">why curl_reap</p>
+      <h2 id="features-title">Four jobs, one library</h2>
+      <p>Modern scraping used to mean stitching together three or four tools. curl_reap folds the best idea from each behind one friendly API, and as of 1.0.0 the whole stack is pure Python.</p>
 
-    <section id="install">
-      <h2>Installation</h2>
-      <p>Requires Python 3.9 or newer. It pulls in <code class="inline">curl_cffi</code>, <code class="inline">lxml</code>, and <code class="inline">cssselect</code>.</p>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-bash" x-ref="c">pip install curl_reap</code></pre></div>
-    </section>
+      <div class="grid-features">
+        <article class="card">
+          <span class="k">profile="chrome"</span>
+          <h3>Get past the door</h3>
+          <p>Requests leave with a browser-shaped TLS handshake and header stack, rebuilt from scratch on the Python standard library. Sites that 403 stock clients serve the page. Profiles: chrome, firefox, safari.</p>
+        </article>
+        <article class="card">
+          <span class="k">auto_match=True</span>
+          <h3>Survive markup changes</h3>
+          <p>Save an element's structural signature once. When the site renames the class weeks later, the selector relocates the element by similarity instead of breaking.</p>
+        </article>
+        <article class="card">
+          <span class="k">.markdown()</span>
+          <h3>Extract in one call</h3>
+          <p>JSON-LD, meta tags, links, images, tables, or the whole page as clean markdown. The answers most scrapes want, no selectors required.</p>
+        </article>
+        <article class="card">
+          <span class="k">reap.run(Spider)</span>
+          <h3>Crawl at scale</h3>
+          <p>A concurrent engine with per-domain AutoThrottle, retries, dedup, proxy rotation, disk cache, and pipelines to JSONL, CSV, or SQLite.</p>
+        </article>
+      </div>
 
-    <section id="quickstart">
-      <h2>Quick start</h2>
+      <div class="tablewrap">
+        <table>
+          <caption>Feature comparison of curl_cffi, Scrapy, Scrapling and curl_reap</caption>
+          <thead>
+            <tr><th scope="col">Capability</th><th scope="col">curl_cffi</th><th scope="col">Scrapy</th><th scope="col">Scrapling</th><th scope="col">curl_reap</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Real browser TLS fingerprint</th><td class="yes">yes</td><td class="no">no</td><td>partial</td><td class="us">yes</td></tr>
+            <tr><th scope="row">Transport in pure Python stdlib</th><td class="no">no</td><td class="no">no</td><td class="no">no</td><td class="us">yes</td></tr>
+            <tr><th scope="row">Parser built in</th><td class="no">no</td><td class="yes">yes</td><td class="yes">yes</td><td class="us">yes</td></tr>
+            <tr><th scope="row">Self-healing selectors</th><td class="no">no</td><td class="no">no</td><td class="yes">yes</td><td class="us">yes</td></tr>
+            <tr><th scope="row">Structured extraction (jsonld, tables, markdown)</th><td class="no">no</td><td class="no">no</td><td>partial</td><td class="us">yes</td></tr>
+            <tr><th scope="row">Concurrent crawl engine</th><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="us">yes</td></tr>
+            <tr><th scope="row">AutoThrottle, retries, pipelines</th><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="us">yes</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" aria-labelledby="install-title">
+    <div class="wrap">
+      <p class="eyebrow">get started</p>
+      <h2 id="install-title">Installation</h2>
+      <p>Requires Python 3.9 or newer. Two small dependencies: <code class="inline">lxml</code> and <code class="inline">cssselect</code>. No compiled curl binding, no browser download, no heavyweight framework.</p>
+      <figure class="code">
+        <figcaption><span class="lang">shell</span></figcaption>
+        <pre><code>pip install curl-reap</code></pre>
+      </figure>
+      <div class="note"><b>New in 1.0.0:</b> the transport was rewritten from scratch. curl_reap no longer depends on curl_cffi; the browser TLS profiles are produced by a pure-Python engine built on the standard library's <code class="inline">ssl</code> and <code class="inline">socket</code> modules.</div>
+    </div>
+  </section>
+
+  <section id="quickstart" aria-labelledby="quickstart-title">
+    <div class="wrap">
+      <p class="eyebrow">get started</p>
+      <h2 id="quickstart-title">Quick start</h2>
+
       <h3>Fetch and parse</h3>
-      <p>A one-shot fetch parses like parsel, but the request carries a genuine Chrome fingerprint at the TLS layer.</p>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">import curl_reap as reap
+      <p>A one-shot fetch parses like parsel, but the request carries a genuine Chrome-shaped fingerprint at the TLS layer.</p>
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>import curl_reap as reap
 
-page = reap.get("https://quotes.toscrape.com", impersonate="chrome124")
+page = reap.get("https://quotes.toscrape.com", profile="chrome")
 print(page.css("span.text::text").getall())
-print(page.css_first("small.author::text"))</code></pre></div>
+print(page.css_first("small.author::text"))</code></pre>
+      </figure>
+
+      <h3>Structured extraction</h3>
+      <p>The answers most scrapes actually want are one method call away, no selectors required.</p>
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>page = reap.get("https://example.com/product/42")
+
+page.jsonld()      # all JSON-LD blocks as dicts
+page.meta_tags()   # {title, description, og:*, twitter:*, canonical, ...}
+page.links(internal_only=True)   # absolute same-domain urls with text
+page.images()      # [{"url": ..., "alt": ...}] (handles lazy data-src)
+page.tables()      # every &lt;table&gt; as list-of-rows
+page.markdown()    # readable page content as markdown, great for LLMs</code></pre>
+      </figure>
 
       <h3>Crawl with concurrency</h3>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">import curl_reap as reap
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>import curl_reap as reap
 
 class Quotes(reap.Spider):
     start_urls = ["https://quotes.toscrape.com"]
+    allowed_domains = ["quotes.toscrape.com"]
 
     def parse(self, page):
         for q in page.css("div.quote"):
@@ -344,43 +518,55 @@ class Quotes(reap.Spider):
                    "author": q.css_first("small.author::text")}
         nxt = page.css_first("li.next a::attr(href)")
         if nxt:
-            yield reap.Request("https://quotes.toscrape.com" + nxt, self.parse)
+            yield page.follow(nxt)   # resolves relative urls for you
 
 items = reap.run(Quotes, concurrency=8, throttle=True)
-print(len(items), "items reaped")</code></pre></div>
-    </section>
+print(len(items), "items reaped")</code></pre>
+      </figure>
+    </div>
+  </section>
 
-    <section id="transport">
-      <h2>Transport and impersonation</h2>
-      <p>Every request goes out with a real browser TLS/JA3 and HTTP2 fingerprint (powered by curl_cffi). This is what gets you past fingerprint-based bot detection that blocks stock Python clients.</p>
+  <section id="transport" aria-labelledby="transport-title">
+    <div class="wrap">
+      <p class="eyebrow">core</p>
+      <h2 id="transport-title">Transport and TLS profiles</h2>
+      <p>Every request leaves with a browser-shaped TLS handshake: cipher order, extension layout, ALPN, and a matching header stack. Since 1.0.0 this engine is written from scratch on the Python standard library, so there is no curl binding and nothing to compile. This is what gets you past fingerprint-based bot detection that blocks stock Python clients.</p>
       <div class="api">
-        <div class="sig">reap.<b>get</b>(url, impersonate="chrome124", headers=None, timeout=30, retries=2, **kw) -> Response</div>
-        <p>One-shot GET on a shared impersonating session. <code class="inline">reap.post</code> and <code class="inline">reap.fetch</code> work the same way. Any extra keyword is passed straight to curl_cffi (params, data, json, proxies, cookies, and so on).</p>
+        <div class="sig">reap.<b>get</b>(url, profile="chrome", headers=None, timeout=30, retries=2, **kw) -&gt; Response</div>
+        <p>One-shot GET on a shared session. <code class="inline">reap.post</code> and <code class="inline">reap.fetch</code> work the same way. Extra keywords (params, data, json, proxy, cookies, and so on) pass straight to the transport.</p>
       </div>
       <div class="api">
-        <div class="sig">reap.<b>Session</b>(impersonate="chrome124", headers=None, timeout=30, retries=2, proxies=None, **kw)</div>
-        <p>A reusable client that keeps cookies and connection pooling. Methods: <code class="inline">.get(url, **kw)</code>, <code class="inline">.post(url, **kw)</code>, <code class="inline">.request(method, url, **kw)</code>, <code class="inline">.close()</code>.</p>
+        <div class="sig">reap.<b>Session</b>(profile="chrome", headers=None, timeout=30, retries=2, proxy=None, rotate=None, cache=None, **kw)</div>
+        <p>A reusable client that keeps cookies and connection pooling. Methods: <code class="inline">.get(url, **kw)</code>, <code class="inline">.post(url, **kw)</code>, <code class="inline">.request(method, url, **kw)</code>, <code class="inline">.close()</code>. <code class="inline">reap.AsyncSession</code> is the awaitable twin.</p>
       </div>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">from curl_reap import Session
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>from curl_reap import Session
 
-s = Session(impersonate="safari17_0", headers={"Accept-Language": "en"}, retries=3)
+s = Session(profile="safari", headers={"Accept-Language": "en"}, retries=3)
 r = s.get("https://httpbin.org/headers")
 print(r.status, r.ok, r.url)
 print(r.json())
-s.close()</code></pre></div>
+s.close()</code></pre>
+      </figure>
       <h3>The Response object</h3>
-      <p>A <code class="inline">Response</code> behaves like a page: <code class="inline">.css</code> / <code class="inline">.xpath</code> / <code class="inline">.find_by_text</code> pass through to a parser. Attributes: <code class="inline">.status</code>, <code class="inline">.ok</code>, <code class="inline">.url</code>, <code class="inline">.headers</code>, <code class="inline">.text</code>, <code class="inline">.content</code>, <code class="inline">.meta</code>. Methods: <code class="inline">.selector()</code>, <code class="inline">.json()</code>.</p>
-      <div class="note">Available <b>impersonate</b> targets follow curl_cffi: chrome99 through chrome124, edge99/101, safari15/17, and more. Pick a recent one (chrome124) for the broadest coverage.</div>
-    </section>
+      <p>A <code class="inline">Response</code> behaves like a page: <code class="inline">.css</code> / <code class="inline">.xpath</code> / <code class="inline">.find_by_text</code> pass through to a parser, and the structured extractors (<code class="inline">.jsonld()</code>, <code class="inline">.meta_tags()</code>, <code class="inline">.links()</code>, <code class="inline">.images()</code>, <code class="inline">.tables()</code>, <code class="inline">.markdown()</code>) work on any fetched page. Attributes: <code class="inline">.status</code>, <code class="inline">.ok</code>, <code class="inline">.url</code>, <code class="inline">.headers</code>, <code class="inline">.text</code>, <code class="inline">.content</code>, <code class="inline">.meta</code>, <code class="inline">.from_cache</code>. Methods: <code class="inline">.json()</code>, <code class="inline">.follow(url)</code>, <code class="inline">.raise_for_status()</code>.</p>
+      <div class="note">Three <b>profiles</b> ship with 1.0.0: <code class="inline">chrome</code> (default), <code class="inline">firefox</code>, and <code class="inline">safari</code>, each modeled on a current stable release. Pass <code class="inline">rotate="random"</code> on a Session to vary the profile per request.</div>
+    </div>
+  </section>
 
-    <section id="selectors">
-      <h2>Selectors and parsing</h2>
+  <section id="selectors" aria-labelledby="selectors-title">
+    <div class="wrap">
+      <p class="eyebrow">core</p>
+      <h2 id="selectors-title">Selectors and parsing</h2>
       <p>The parser is built on lxml with parsel-style ergonomics. CSS supports the <code class="inline">::text</code> and <code class="inline">::attr(name)</code> pseudo elements.</p>
       <div class="api">
-        <div class="sig"><b>Selector</b>.css(query, auto_match=False, identifier=None, storage=None) -> SelectorList</div>
+        <div class="sig"><b>Selector</b>.css(query, auto_match=False, identifier=None, storage=None) -&gt; SelectorList</div>
         <p>Select by CSS. Returns a <code class="inline">SelectorList</code> of child Selectors, or of strings when the query ends in <code class="inline">::text</code> or <code class="inline">::attr(...)</code>.</p>
       </div>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">page.css("h1::text").get()              # first match, or None
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>page.css("h1::text").get()              # first match, or None
 page.css("a.item::attr(href)").getall() # every href as a list
 page.css("div.card")                    # SelectorList of element Selectors
 page.css_first("span.price::text", default="n/a")
@@ -388,22 +574,29 @@ page.css_first("span.price::text", default="n/a")
 # nested selection
 for card in page.css("div.card"):
     title = card.css_first(".title::text")
-    link  = card.css_first("a::attr(href)")</code></pre></div>
+    link  = card.css_first("a::attr(href)")</code></pre>
+      </figure>
       <h3>XPath, regex, and values</h3>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">page.xpath("//div[@class='quote']/span/text()").getall()
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>page.xpath("//div[@class='quote']/span/text()").getall()
 page.re(r"price:\s*([\d.]+)")
 
 el = page.css_first("a.author")
 el.text          # text content, stripped
 el.attr("href")  # one attribute
 el.attrib        # dict of all attributes
-el.html          # outer HTML of the element</code></pre></div>
+el.html          # outer HTML of the element</code></pre>
+      </figure>
       <h3>SelectorList helpers</h3>
       <p><code class="inline">.get(default=None)</code>, <code class="inline">.getall()</code>, <code class="inline">.text()</code>, <code class="inline">.attr(name)</code>, and <code class="inline">.css(query)</code> (mapped across every element in the list).</p>
-    </section>
+    </div>
+  </section>
 
-    <section id="healing">
-      <h2>Self-healing selectors</h2>
+  <section id="healing" aria-labelledby="healing-title">
+    <div class="wrap">
+      <p class="eyebrow">core</p>
+      <h2 id="healing-title">Self-healing selectors</h2>
       <p>The biggest maintenance cost in scraping is selectors breaking when a site renames a class or reshuffles its DOM. curl_reap can save a structural <em>signature</em> of an element once, then relocate it later by scoring every node against that signature.</p>
       <div class="api">
         <div class="sig"><b>Selector</b>.save(identifier, storage=None)</div>
@@ -413,7 +606,9 @@ el.html          # outer HTML of the element</code></pre></div>
         <div class="sig"><b>Selector</b>.css(query, auto_match=True, identifier="...", storage=None)</div>
         <p>If the normal query finds nothing and <code class="inline">auto_match=True</code>, curl_reap relocates the element from the saved signature for that identifier.</p>
       </div>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">import curl_reap as reap
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>import curl_reap as reap
 
 # 1. remember the button once, from today's markup
 page = reap.get("https://shop.example.com/item/42")
@@ -423,40 +618,52 @@ page.css_first("a.buy-btn").save("buy_button")
 #    the old selector misses, but auto_match relocates it:
 later = reap.get("https://shop.example.com/item/99")
 btn = later.css_first("a.buy-btn", auto_match=True, identifier="buy_button")
-print(btn.attr("href"))   # found anyway</code></pre></div>
+print(btn.attr("href"))   # found anyway</code></pre>
+      </figure>
       <h3>Under the hood</h3>
       <p>Exposed for advanced use: <code class="inline">reap.signature(element)</code>, <code class="inline">reap.similarity(sig_a, sig_b)</code> (returns 0..1), <code class="inline">reap.save(id, element, storage)</code>, and <code class="inline">reap.relocate(id, tree, storage, threshold=0.6)</code>. Matching weights tag, class set (Jaccard), id, attributes, text, and DOM path.</p>
-    </section>
+    </div>
+  </section>
 
-    <section id="finders">
-      <h2>Finders</h2>
+  <section id="finders" aria-labelledby="finders-title">
+    <div class="wrap">
+      <p class="eyebrow">core</p>
+      <h2 id="finders-title">Finders</h2>
       <div class="api">
-        <div class="sig"><b>Selector</b>.find_by_text(text, partial=True, first=False) -> SelectorList</div>
+        <div class="sig"><b>Selector</b>.find_by_text(text, partial=True, first=False) -&gt; SelectorList</div>
         <p>Find elements whose text contains (or equals, if <code class="inline">partial=False</code>) the given string.</p>
       </div>
       <div class="api">
-        <div class="sig"><b>Selector</b>.find_similar(sample, threshold=0.6, limit=None) -> SelectorList</div>
+        <div class="sig"><b>Selector</b>.find_similar(sample, threshold=0.6, limit=None) -&gt; SelectorList</div>
         <p>Given one element, return others that are structurally similar. Great for grabbing every repeated card or row without writing a brittle class selector.</p>
       </div>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">signin = page.find_by_text("Sign in", first=True).get()
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>signin = page.find_by_text("Sign in", first=True).get()
 
 first_card = page.css_first("div.card")
 all_cards  = page.find_similar(first_card)   # every card like it
-print(len(all_cards))</code></pre></div>
-    </section>
+print(len(all_cards))</code></pre>
+      </figure>
+    </div>
+  </section>
 
-    <section id="geocode">
-      <h2>Geocoding</h2>
+  <section id="geocode" aria-labelledby="geocode-title">
+    <div class="wrap">
+      <p class="eyebrow">core</p>
+      <h2 id="geocode-title">Geocoding</h2>
       <p>Many scraped listings carry a name and an area but no coordinates (the lat/lon lives behind a wall, or simply is not in the markup). A naive single query fails often: the full marketing name is not in the gazetteer, and a bare district query collapses every listing onto one centroid. The <code class="inline">Geocoder</code> fixes that with a cascade and tells you the precision.</p>
       <div class="api">
         <div class="sig">reap.<b>Geocoder</b>(min_interval=1.1, cache=".reap_geocode.json", min_importance=0.0)</div>
         <p>A cascading geocoder over OpenStreetMap Nominatim, cached and rate limited.</p>
       </div>
       <div class="api">
-        <div class="sig"><b>Geocoder</b>.geocode(name=None, area=None, city=None, country=None) -> dict | None</div>
+        <div class="sig"><b>Geocoder</b>.geocode(name=None, area=None, city=None, country=None) -&gt; dict | None</div>
         <p>Tries the raw name, then the name with generic suffixes stripped (Serviced Apartments, Aparthotel, by &lt;brand&gt;, ...), then the district, then the city. Stops at the first hit and returns <code class="inline">{lat, lon, precision, importance, display_name, query}</code>. <code class="inline">precision</code> is <code class="inline">"name"</code>, <code class="inline">"district"</code>, or <code class="inline">"city"</code>, so you keep the exact ones and drop coarse centroids.</p>
       </div>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">from curl_reap import Geocoder
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>from curl_reap import Geocoder
 
 geo = Geocoder()
 hit = geo.geocode(name="Chelsea Cloisters Serviced Apartments",
@@ -464,48 +671,64 @@ hit = geo.geocode(name="Chelsea Cloisters Serviced Apartments",
 # {'lat': 51.49.., 'lon': -0.17.., 'precision': 'name', ...}
 
 if hit and hit["precision"] in ("name", "district"):
-    listing["lat"], listing["lon"] = hit["lat"], hit["lon"]   # keep accurate ones only</code></pre></div>
+    listing["lat"], listing["lon"] = hit["lat"], hit["lon"]</code></pre>
+      </figure>
       <div class="note">Be a good citizen: Nominatim asks for a real User-Agent and a max of one request per second. The Geocoder sets both by default and caches every lookup to disk, so repeat runs are instant.</div>
-    </section>
+    </div>
+  </section>
 
-    <section id="engine">
-      <h2>Crawl engine</h2>
-      <p>A small concurrent engine. A <code class="inline">Spider</code> yields items (dicts) and more <code class="inline">Request</code> objects; the engine handles concurrency, dedup, retries, AutoThrottle, and pipelines.</p>
+  <section id="engine" aria-labelledby="engine-title">
+    <div class="wrap">
+      <p class="eyebrow">crawl</p>
+      <h2 id="engine-title">Crawl engine</h2>
+      <p>A small concurrent engine. A <code class="inline">Spider</code> yields items (dicts) and more <code class="inline">Request</code> objects; a continuous scheduler keeps every worker busy while the engine handles concurrency, dedup, retries, AutoThrottle, depth and domain limits, optional robots.txt compliance, and pipelines.</p>
       <div class="api">
-        <div class="sig">class <b>Spider</b>: name, start_urls, def parse(self, page)</div>
-        <p>Set <code class="inline">start_urls</code> and implement <code class="inline">parse</code>. Override <code class="inline">start()</code> if you need custom seed requests.</p>
+        <div class="sig">class <b>Spider</b>: name, start_urls, allowed_domains, max_depth, def parse(self, page)</div>
+        <p>Set <code class="inline">start_urls</code> and implement <code class="inline">parse</code>. Override <code class="inline">start()</code> if you need custom seed requests. <code class="inline">SitemapSpider</code> seeds itself from a site's sitemap instead (gzipped sitemaps and index files included).</p>
       </div>
       <div class="api">
-        <div class="sig"><b>Request</b>(url, callback=None, method="GET", meta=None, **kw)</div>
+        <div class="sig"><b>Request</b>(url, callback=None, method="GET", meta=None, priority=0, dont_filter=False, errback=None, **kw)</div>
         <p>A pending fetch plus its parse callback. <code class="inline">meta</code> is carried onto the Response. Extra kwargs go to the transport.</p>
       </div>
       <div class="api">
-        <div class="sig">reap.<b>run</b>(spider, concurrency=8, retries=2, throttle=True, delay=0.0, impersonate="chrome124", pipelines=None, dedup=True, on_item=None, max_pages=None) -> list</div>
+        <div class="sig">reap.<b>run</b>(spider, concurrency=8, retries=2, throttle=True, delay=0.0, profile="chrome", respect_robots=False, pipelines=None, dedup=True, on_item=None, max_pages=None) -&gt; list</div>
         <p>Run a Spider (class or instance) to completion and return the scraped items. <code class="inline">reap.Reaper(...)</code> is the same with a <code class="inline">.run()</code> method and a <code class="inline">.stats</code> dict (requests, items, errors, dropped).</p>
       </div>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">import curl_reap as reap
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>import curl_reap as reap
 
 reaper = reap.Reaper(MySpider(), concurrency=12, throttle=True,
                      on_item=lambda it: print("got", it["title"]))
 items = reaper.run()
-print(reaper.stats)   # {'requests': 40, 'items': 380, 'errors': 0, 'dropped': 4}</code></pre></div>
-    </section>
+print(reaper.stats)   # {'requests': 40, 'items': 380, 'errors': 0, 'dropped': 4}</code></pre>
+      </figure>
+    </div>
+  </section>
 
-    <section id="throttle">
-      <h2>AutoThrottle</h2>
-      <p>With <code class="inline">throttle=True</code>, the engine watches response latency and adapts a per-request delay so the crawl stays polite and avoids IP bans, the way Scrapy's AutoThrottle does. Target delay is roughly average latency divided by your concurrency. Set <code class="inline">delay=</code> for a fixed floor or <code class="inline">throttle=False</code> to go full speed.</p>
-    </section>
+  <section id="throttle" aria-labelledby="throttle-title">
+    <div class="wrap">
+      <p class="eyebrow">crawl</p>
+      <h2 id="throttle-title">AutoThrottle</h2>
+      <p>With <code class="inline">throttle=True</code>, the engine watches response latency per domain and adapts a per-request delay so the crawl stays polite and avoids IP bans, backing off further on 429 and 503. Target delay is roughly average latency divided by your concurrency. Set <code class="inline">delay=</code> for a fixed floor or <code class="inline">throttle=False</code> to go full speed.</p>
+    </div>
+  </section>
 
-    <section id="pipelines">
-      <h2>Pipelines</h2>
+  <section id="pipelines" aria-labelledby="pipelines-title">
+    <div class="wrap">
+      <p class="eyebrow">crawl</p>
+      <h2 id="pipelines-title">Pipelines</h2>
       <p>Each scraped item flows through a chain. A pipeline that returns <code class="inline">None</code> drops the item.</p>
       <ul>
         <li><code class="inline">DedupPipeline(key=None)</code> drops duplicates (by a field, or the whole item). Added automatically unless you pass <code class="inline">dedup=False</code>.</li>
         <li><code class="inline">JsonLinesPipeline(path)</code> streams items to a .jsonl file as they arrive.</li>
         <li><code class="inline">CsvPipeline(path)</code> writes a CSV on close.</li>
+        <li><code class="inline">SqlitePipeline(path)</code> appends items to a SQLite table.</li>
         <li>Subclass <code class="inline">Pipeline</code> and implement <code class="inline">open</code> / <code class="inline">process</code> / <code class="inline">close</code> for your own.</li>
       </ul>
-      <div class="code" x-data="cp()"><button class="cp" @click="copy($refs.c)" x-text="t"></button><pre><code class="language-python" x-ref="c">from curl_reap import Pipeline, DedupPipeline, JsonLinesPipeline
+      <figure class="code">
+        <figcaption><span class="lang">python</span></figcaption>
+        <pre><code>from curl_reap import Pipeline, DedupPipeline, JsonLinesPipeline
 
 class PriceToFloat(Pipeline):
     def process(self, item):
@@ -516,37 +739,75 @@ reap.run(MySpider, pipelines=[
     DedupPipeline(key="url"),
     PriceToFloat(),
     JsonLinesPipeline("out.jsonl"),
-])</code></pre></div>
-    </section>
+])</code></pre>
+      </figure>
+    </div>
+  </section>
 
-    <section id="api">
-      <h2>API reference</h2>
-      <div class="tablewrap"><table>
-        <tr><th>Symbol</th><th>What it does</th></tr>
-        <tr><td><code>reap.get / post / fetch</code></td><td>One-shot impersonating request, returns Response</td></tr>
-        <tr><td><code>reap.Session</code></td><td>Reusable client (cookies, pooling, retries)</td></tr>
-        <tr><td><code>reap.Response</code></td><td>Fetched page; css/xpath pass through, plus json()</td></tr>
-        <tr><td><code>reap.Selector</code></td><td>css, css_first, xpath, re, find_by_text, find_similar, save, text, attr, html</td></tr>
-        <tr><td><code>reap.SelectorList</code></td><td>get, getall, text, attr, css</td></tr>
-        <tr><td><code>reap.Spider</code></td><td>start_urls + parse; the crawl unit</td></tr>
-        <tr><td><code>reap.Request</code></td><td>url + callback + meta</td></tr>
-        <tr><td><code>reap.run / reap.Reaper</code></td><td>Run a spider with concurrency, throttle, pipelines</td></tr>
-        <tr><td><code>reap.Pipeline and friends</code></td><td>Dedup, JsonLines, Csv, or custom</td></tr>
-        <tr><td><code>reap.signature / similarity / save / relocate</code></td><td>Self-healing selector internals</td></tr>
-      </table></div>
-    </section>
+  <section id="cli" aria-labelledby="cli-title">
+    <div class="wrap">
+      <p class="eyebrow">shell</p>
+      <h2 id="cli-title">Command line</h2>
+      <p>Installing the package also installs a <code class="inline">reap</code> command: fetch, extract, and crawl without writing a script.</p>
+      <figure class="code">
+        <figcaption><span class="lang">shell</span></figcaption>
+        <pre><code>reap get https://example.com                     # readable markdown
+reap get https://example.com --css "h1::text"    # extract with a selector
+reap get https://api.site.com/x --json           # pretty-print JSON
+reap get https://blocked.example --profile firefox
+reap meta https://example.com                    # title + og/twitter + JSON-LD
+reap links https://example.com --internal        # same-domain links only
+reap crawl https://quotes.toscrape.com --css "span.text::text" \
+     --max-pages 20 -o out.jsonl                 # crawl to .jsonl / .csv / .db</code></pre>
+      </figure>
+    </div>
+  </section>
 
-    <section id="compare">
-      <h2>Why not just use X</h2>
-      <p><b>curl_cffi</b> is the transport only: brilliant TLS impersonation, no parser, no crawl engine. curl_reap uses it underneath and adds the rest.</p>
+  <section id="api" aria-labelledby="api-title">
+    <div class="wrap">
+      <p class="eyebrow">reference</p>
+      <h2 id="api-title">API reference</h2>
+      <div class="tablewrap">
+        <table>
+          <caption>Every public symbol in curl_reap and what it does</caption>
+          <thead>
+            <tr><th scope="col">Symbol</th><th scope="col">What it does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>reap.get / post / fetch</code></td><td>One-shot request with a browser TLS profile, returns Response</td></tr>
+            <tr><td><code>reap.Session / AsyncSession</code></td><td>Reusable client: cookies, pooling, retries, rotation, cache</td></tr>
+            <tr><td><code>reap.Response</code></td><td>Fetched page; css/xpath pass through, plus json(), jsonld(), meta_tags(), links(), images(), tables(), markdown()</td></tr>
+            <tr><td><code>reap.Selector</code></td><td>css, css_first, xpath, re, find_by_text, find_similar, save, text, attr, html</td></tr>
+            <tr><td><code>reap.SelectorList</code></td><td>get, getall, text, attr, css</td></tr>
+            <tr><td><code>reap.Spider / SitemapSpider</code></td><td>start_urls (or sitemap_urls) + parse; the crawl unit</td></tr>
+            <tr><td><code>reap.Request</code></td><td>url + callback + meta + priority</td></tr>
+            <tr><td><code>reap.run / reap.Reaper</code></td><td>Run a spider with concurrency, throttle, pipelines</td></tr>
+            <tr><td><code>reap.Pipeline and friends</code></td><td>Dedup, JsonLines, Csv, Sqlite, or custom</td></tr>
+            <tr><td><code>reap.signature / similarity / save / relocate</code></td><td>Self-healing selector internals</td></tr>
+            <tr><td><code>reap.Geocoder</code></td><td>Cascading Nominatim geocoder with precision labels</td></tr>
+            <tr><td><code>reap</code> (CLI)</td><td>get / meta / links / crawl from the shell</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="compare" aria-labelledby="compare-title">
+    <div class="wrap">
+      <p class="eyebrow">reference</p>
+      <h2 id="compare-title">Why not just use X</h2>
+      <p><b>curl_cffi</b> powered earlier versions of curl_reap and remains a brilliant curl binding. As of 1.0.0 curl_reap no longer uses it: the browser handshake is re-created in pure Python on the standard library, so installs need no compiled wheel and the whole stack stays readable, debuggable Python.</p>
       <p><b>Scrapy</b> is a heavyweight framework with great orchestration, but its default downloader is TLS-fingerprinted and blocked by modern bot walls. curl_reap brings the impersonation into the engine.</p>
       <p><b>Scrapling</b> pioneered self-healing selectors (the idea curl_reap borrows) and ships a stealth browser. curl_reap keeps the adaptive parsing and the lightweight footprint, without bundling a browser.</p>
-    </section>
+    </div>
+  </section>
 
-    <section id="responsible">
-      <h2>Legal and acceptable use</h2>
+  <section id="responsible" aria-labelledby="responsible-title">
+    <div class="wrap">
+      <p class="eyebrow">legal</p>
+      <h2 id="responsible-title">Legal and acceptable use</h2>
       <div class="note legal">
-        <b>&#9888; Read this before you scrape.</b> curl_reap impersonates a real browser's TLS, which is what a normal browser does. It does <b>not</b> solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services (Cloudflare, DataDome, PerimeterX, Akamai Bot Manager). <b>If a site has deployed one of those and is actively blocking you, that block is the line the maintainers expect you to respect.</b>
+        <b>&#9888; Read this before you scrape.</b> curl_reap speaks TLS the way a real browser does, which is what a normal browser does. It does <b>not</b> solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services (Cloudflare, DataDome, PerimeterX, Akamai Bot Manager). <b>If a site has deployed one of those and is actively blocking you, that block is the line the maintainers expect you to respect.</b>
       </div>
       <p>This is not legal advice. Web scraping legality depends on jurisdiction, what you scrape, and how. You are responsible for your use:</p>
       <ul>
@@ -557,23 +818,27 @@ reap.run(MySpider, pipelines=[
         <li>Throttle (<code class="inline">throttle=True</code>) and identify yourself with a descriptive User-Agent so operators can reach you.</li>
       </ul>
       <p>Provided under the MIT License, "as is", with no warranty and no liability. Full notice and details: <a href="https://github.com/anishfyi/curl_reap/blob/main/LEGAL.md" target="_blank" rel="noopener">LEGAL.md</a>.</p>
-    </section>
-  </main>
-</div>
+    </div>
+  </section>
+
+</main>
 
 <footer>
-  curl_reap is MIT licensed. Built with curl_cffi, lxml, and cssselect.
-  &nbsp;&middot;&nbsp; <a href="https://pypi.org/project/curl-reap/" target="_blank" rel="noopener">PyPI</a>
-  &nbsp;&middot;&nbsp; <a href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">GitHub</a>
+  <div class="wrap">
+    curl_reap is MIT licensed. Pure Python on top of lxml and cssselect.
+    &middot; <a href="https://pypi.org/project/curl-reap/" target="_blank" rel="noopener">PyPI</a>
+    &middot; <a href="https://github.com/anishfyi/curl_reap" target="_blank" rel="noopener">GitHub</a>
+    &middot; <a href="https://github.com/anishfyi/curl_reap/blob/main/LEGAL.md" target="_blank" rel="noopener">LEGAL.md</a>
+  </div>
 </footer>
 
-<div id="sponsors" class="sponsor-modal">
-  <a href="#" class="sponsor-scrim" aria-label="Close"></a>
-  <div class="sponsor-card" role="dialog" aria-modal="true" aria-label="Sponsors">
-    <a href="#" class="sponsor-close" aria-label="Close">&times;</a>
+<div id="sponsors" class="sponsor-modal" role="dialog" aria-modal="true" aria-label="Sponsors">
+  <a href="#top" class="sponsor-scrim" aria-label="Close sponsors dialog"></a>
+  <div class="sponsor-card">
+    <a href="#top" class="sponsor-close" aria-label="Close sponsors dialog">&times;</a>
     <div class="sponsor-eyebrow">Sponsored by</div>
-    <a href="https://go.nodemaven.com/curlreaptools" target="_blank" rel="noopener sponsored" title="NodeMaven" class="sponsor-logo">
-      <img src="sponsors/nodemaven.svg" alt="NodeMaven" height="38" />
+    <a href="https://go.nodemaven.com/curlreaptools" target="_blank" rel="noopener sponsored" class="sponsor-logo" aria-label="NodeMaven website">
+      <img src="sponsors/nodemaven.svg" alt="NodeMaven" height="36">
     </a>
     <p class="sponsor-tagline">The most reliable proxy provider with the highest quality IPs on the market. Best solution for automation, web scraping, SEO research, and social media management.</p>
     <ul class="sponsor-why">
@@ -592,35 +857,34 @@ reap.run(MySpider, pipelines=[
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 <script>
-  function docs(){
-    return {
-      menu:false, active:"intro",
-      init(){
-        if(window.hljs){document.querySelectorAll("pre code").forEach(function(b){window.hljs.highlightElement(b);});}
-        var links=[].slice.call(document.querySelectorAll("nav.side a"));
-        var byId={}; links.forEach(function(a){byId[a.getAttribute("href").slice(1)]=a;});
-        var obs=new IntersectionObserver(function(es){
-          es.forEach(function(e){
-            if(e.isIntersecting){
-              links.forEach(function(a){a.classList.remove("on");});
-              var a=byId[e.target.id]; if(a)a.classList.add("on");
-            }
-          });
-        },{rootMargin:"-72px 0px -70% 0px"});
-        document.querySelectorAll("section[id]").forEach(function(s){obs.observe(s);});
-      }
-    };
-  }
-  function cp(){
-    return {
-      t:"Copy",
-      copy(el){
-        navigator.clipboard.writeText(el.textContent).then(()=>{var self=this;self.t="Copied";setTimeout(()=>{self.t="Copy";},1200);});
-      }
-    };
-  }
+(function () {
+  var toggle = document.getElementById("nav-toggle");
+  document.querySelectorAll(".nav-links a").forEach(function (a) {
+    a.addEventListener("click", function () { toggle.checked = false; });
+  });
+  if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+  document.querySelectorAll("figure.code").forEach(function (box) {
+    var pre = box.querySelector("pre");
+    var head = box.querySelector("figcaption");
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cp";
+    btn.textContent = "Copy";
+    btn.setAttribute("aria-label", "Copy code to clipboard");
+    btn.addEventListener("click", function () {
+      navigator.clipboard.writeText(pre.textContent).then(function () {
+        btn.textContent = "Copied";
+        btn.classList.add("ok");
+        setTimeout(function () {
+          btn.textContent = "Copy";
+          btn.classList.remove("ok");
+        }, 1400);
+      });
+    });
+    head.appendChild(btn);
+  });
+})();
 </script>
 </body>
 </html>
