@@ -10,6 +10,8 @@ pip install curl_reap
 import curl_reap as reap
 
 page = reap.get("https://quotes.toscrape.com", profile="chrome")
+# or curl_cffi-style versioned targets (42 available):
+page = reap.get("https://quotes.toscrape.com", impersonate="chrome124")
 print(page.css("span.text::text").getall())
 print(page.jsonld())
 ```

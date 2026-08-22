@@ -19,13 +19,14 @@ class AsyncSession:
     def __init__(self, profile="chrome", headers=None, timeout=30, retries=2,
                  proxy=None, rotate=None, profiles=None, retry_policy=None,
                  cache=None, on_response=None, block_rotations=None, verify=True,
-                 allow_redirects=True, max_redirects=10):
+                 allow_redirects=True, max_redirects=10, impersonate=None):
         self._session = Session(
             profile=profile, headers=headers, timeout=timeout, retries=retries,
             proxy=proxy, rotate=rotate, profiles=profiles,
             retry_policy=retry_policy, cache=cache, on_response=on_response,
             block_rotations=block_rotations, verify=verify,
-            allow_redirects=allow_redirects, max_redirects=max_redirects)
+            allow_redirects=allow_redirects, max_redirects=max_redirects,
+            impersonate=impersonate)
 
     @property
     def profile(self):

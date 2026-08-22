@@ -15,14 +15,14 @@ import json
 import sys
 
 
-def _fetch(url, profile, rotate):
+def _fetch(url, profile, rotate, impersonate=None):
     from .http import Session
-    s = Session(profile=profile, rotate=rotate)
+    s = Session(profile=profile, rotate=rotate, impersonate=impersonate)
     return s.get(url)
 
 
 def _cmd_get(args):
-    r = _fetch(args.url, args.profile, args.rotate)
+    r = _fetch(args.url, args.profile, args.rotate, args.impersonate)
     if not r.ok:
         print(f"[reap] HTTP {r.status} for {r.url}", file=sys.stderr)
     if args.css:
@@ -40,14 +40,14 @@ def _cmd_get(args):
 
 
 def _cmd_meta(args):
-    r = _fetch(args.url, args.profile, args.rotate)
+    r = _fetch(args.url, args.profile, args.rotate, args.impersonate)
     out = {"meta": r.meta_tags(), "jsonld": r.jsonld()}
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0 if r.ok else 1
 
 
 def _cmd_links(args):
-    r = _fetch(args.url, args.profile, args.rotate)
+    r = _fetch(args.url, args.profile, args.rotate, args.impersonate)
     for link in r.links(internal_only=args.internal):
         print(f"{link['url']}\t{link['text']}")
     return 0 if r.ok else 1
@@ -96,6 +96,9 @@ def _cmd_crawl(args):
 
 def build_parser():
     p = argparse.ArgumentParser(prog="reap", description="reap the web from the shell")
+    p.add_argument("--impersonate", default=None,
+                   help="versioned browser target, e.g. chrome124, firefox133, "
+                        "safari17_0 (overrides --profile; best-effort)")
     p.add_argument("--profile", default="chrome", choices=["chrome", "firefox", "safari"],
                    help="TLS/header profile (default chrome)")
     p.add_argument("--rotate", choices=["random", "sequence"], help="rotate profiles")
