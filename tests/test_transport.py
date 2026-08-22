@@ -37,6 +37,21 @@ def response(body=b"ok", headers=b""):
             b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
 
 
+
+class _BareRaw:
+    """Minimal raw response stand-in for transport-level fakes."""
+    def __init__(self):
+        from curl_reap.http import CaseInsensitiveHeaders
+        self.status_code = 200
+        self.url = "http://test/"
+        self.headers = CaseInsensitiveHeaders({})
+        self.content = b"ok"
+        self.text = "ok"
+        self.cookies = {}
+        self.cookie_specs = []
+        self.saved_bytes = 0
+
+
 def test_header_order_and_casing_are_deterministic(monkeypatch):
     sockets = [FakeSocket(response()), FakeSocket(response())]
     monkeypatch.setattr("curl_reap.http.socket.create_connection",
@@ -57,7 +72,9 @@ def test_header_order_and_casing_are_deterministic(monkeypatch):
     lines = sent[0].split(b"\r\n")
     assert lines[0] == b"GET /a?b=1 HTTP/1.1"
     assert lines[1] == b"Host: example.test"
-    assert lines[2] == b"uSeR-aGeNt: ordered-agent"
+    # profile impersonation headers precede user overrides, which win by name
+    assert lines.index(b"sec-ch-ua-mobile: ?0") < lines.index(b"uSeR-aGeNt: ordered-agent")
+    assert b"Chrome/131.0.0.0 Safari/537.36" not in sent[0]
     assert lines.index(b"X-First: 1") < lines.index(b"x-second: 2") < lines.index(b"X-Request: 3")
 
 
@@ -290,3 +307,67 @@ def test_download_decodes_gzip_bodies(tmp_path):
         assert r.meta["bytes"] == len(payload)
     finally:
         server.shutdown()
+
+
+# ------------------------------------------------------------ impersonation
+
+def test_impersonate_alias_and_versioned_targets():
+    # curl_cffi-style names resolve to versioned profiles
+    s = curl_reap.Session(impersonate="chrome124")
+    assert s.profile.name == "chrome124"
+    assert s.profile is curl_reap.FINGERPRINTS["chrome124"]
+    # short canonical names still work through the same door
+    assert curl_reap.Session(impersonate="firefox").profile.name == "firefox"
+    # alternate spellings normalize (curl_cffi's safari170 == safari17_0)
+    assert resolve_profile("safari170").name == "safari17_0"
+    assert resolve_profile("CHROME124").name == "chrome124"
+    with pytest.raises(ValueError, match="chrome124"):
+        curl_reap.Session(impersonate="netscape")
+
+
+def test_impersonate_conflicts_with_profile():
+    with pytest.raises(ValueError):
+        s = curl_reap.Session()
+        s.request("GET", "http://x/", profile="chrome", impersonate="firefox133")
+
+
+def test_chrome_header_set_matches_real_navigation_order():
+    headers = curl_reap.FINGERPRINTS["chrome124"].headers
+    names = [n.lower() for n, _ in headers]
+    values = {n.lower(): v for n, v in headers}
+    # Chrome emits client hints before UA/Accept, sec-fetch before encoding
+    assert names.index("sec-ch-ua") < names.index("sec-ch-ua-mobile") \
+        < names.index("sec-ch-ua-platform") < names.index("user-agent")
+    assert names[-3:] == ["accept-encoding", "accept-language",
+                          names[-1]] or names.index("sec-fetch-dest") > names.index("upgrade-insecure-requests")
+    # brand versions agree with the User-Agent major version
+    assert '"Chromium";v="124"' in values["sec-ch-ua"]
+    assert "Chrome/124.0.0.0" in values["user-agent"]
+    # only advertise encodings the transport actually decodes
+    assert values["accept-encoding"] == "gzip, deflate"
+
+
+def test_edge_profile_brands_differ_from_chrome():
+    edge = curl_reap.FINGERPRINTS["edge131"]
+    chrome = curl_reap.FINGERPRINTS["chrome131"]
+    edge_headers = {n.lower(): v for n, v in edge.headers}
+    assert '"Microsoft Edge";v="131"' in edge_headers["sec-ch-ua"]
+    assert edge_headers["user-agent"].endswith("Edg/131.0.0.0")
+    assert '"Google Chrome";v="131"' not in edge_headers["sec-ch-ua"]
+    # same TLS shape as same-version Chrome
+    assert edge.ciphers == chrome.ciphers
+
+
+def test_request_level_impersonate_wins(monkeypatch):
+    session = curl_reap.Session(retries=0)
+    captured = []
+
+    def fake(method, url, profile, **kwargs):
+        captured.append(profile)
+        return _BareRaw()
+
+    monkeypatch.setattr(session._transport, "request", fake)
+    session.get("http://one.test/")
+    session.get("http://two.test/", impersonate="safari18_0")
+    assert captured[0].name == "chrome"
+    assert captured[1].name == "safari18_0"

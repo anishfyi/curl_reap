@@ -1106,9 +1106,12 @@ class Session:
     def __init__(self, profile="chrome", headers=None, timeout=30, retries=2,
                  proxy=None, rotate=None, profiles=None, retry_policy=None,
                  cache=None, on_response=None, block_rotations=None, verify=True,
-                 allow_redirects=True, max_redirects=10):
+                 allow_redirects=True, max_redirects=10, impersonate=None):
         if rotate not in (None, "sequence", "random"):
             raise ValueError("rotate must be None, 'sequence', or 'random'")
+        if impersonate is not None:
+            # curl_cffi-style alias: Session(impersonate="chrome124")
+            profile = impersonate
         self.profile = resolve_profile(profile)
         if profiles is None:
             pool = tuple(PROFILES.values()) if rotate else (self.profile,)
@@ -1176,6 +1179,12 @@ class Session:
         json_data = kwargs.pop("json", None)
         request_proxy = kwargs.pop("proxy", None)
         request_profile = kwargs.pop("profile", None)
+        request_impersonate = kwargs.pop("impersonate", None)
+        if request_impersonate is not None:
+            if (request_profile is not None and
+                    resolve_profile(request_impersonate) != resolve_profile(request_profile)):
+                raise ValueError("profile and impersonate disagree; pass one")
+            request_profile = request_impersonate
         verify = kwargs.pop("verify", self.verify)
         auth = kwargs.pop("auth", None)
         allow_redirects = kwargs.pop("allow_redirects", self.allow_redirects)
