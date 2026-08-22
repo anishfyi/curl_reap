@@ -24,7 +24,7 @@ import re
 import threading
 import time
 
-from curl_cffi import requests as _cffi
+from .http import Session
 
 # trailing generic words that keep a named building out of the gazetteer
 _GENERIC = re.compile(
@@ -36,22 +36,24 @@ _GENERIC = re.compile(
 )
 
 DEFAULT_CACHE = ".reap_geocode.json"
-DEFAULT_UA = "curl_reap/0.1 (+https://github.com/anishfyi/curl_reap)"
+DEFAULT_UA = "curl_reap/1.0 (+https://github.com/anishfyi/curl_reap)"
 
 
 class Geocoder:
     def __init__(self, endpoint="https://nominatim.openstreetmap.org/search",
                  user_agent=DEFAULT_UA, cache=DEFAULT_CACHE, min_interval=1.1,
-                 impersonate="chrome124", min_importance=0.0):
+                 profile="chrome", min_importance=0.0):
         self.endpoint = endpoint
         self.user_agent = user_agent
         self.cache_path = cache
         self.min_interval = min_interval
-        self.impersonate = impersonate
+        self.profile = profile
         self.min_importance = min_importance
         self._cache = _load(cache)
         self._lock = threading.Lock()
         self._last = 0.0
+        self._session = Session(profile=profile, headers={"User-Agent": user_agent,
+                                                         "Accept-Language": "en"})
 
     def clean_name(self, name):
         """Strip one trailing generic descriptor so the core place name remains."""
@@ -110,10 +112,10 @@ class Geocoder:
                 time.sleep(wait)
             self._last = time.time()
         try:
-            r = _cffi.get(self.endpoint,
-                          params={"q": q, "format": "json", "limit": 1, "addressdetails": 0},
-                          headers={"User-Agent": self.user_agent, "Accept-Language": "en"},
-                          impersonate=self.impersonate, timeout=30)
+            r = self._session.get(
+                self.endpoint,
+                params={"q": q, "format": "json", "limit": 1, "addressdetails": 0},
+                timeout=30)
             data = r.json() if r.status_code == 200 else []
             return data[0] if data else None
         except Exception:  # noqa: BLE001
