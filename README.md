@@ -18,6 +18,13 @@ print(page.jsonld())
 
 Python 3.9+. Two dependencies total: `lxml` and `cssselect`. No binaries, no downloads at runtime, pure standard-library transport.
 
+Optional extras when you want more:
+
+```bash
+pip install "curl-reap[h2]"   # HTTP/2 via hyper-h2 (Session(http2=True) / reap get --http2)
+pip install "curl-reap[js]"   # JavaScript rendering via Playwright (reap.render)
+```
+
 ## How it compares
 
 | | requests + bs4 | httpx | curl_cffi | Scrapy | Scrapling | **curl_reap** |
