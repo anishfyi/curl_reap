@@ -321,6 +321,7 @@ class _Connection:
     def __init__(self, sock, key):
         self.sock = sock
         self.reader = _BufferedSocket(sock)
+        self.h2 = None  # H2Protocol when ALPN negotiated h2
         self.key = key
         self.closed = False
 
@@ -493,20 +494,28 @@ class CookieJar:
 
 
 class _Transport:
-    """Thread-safe pool of idle HTTP/1.1 connections."""
+    """Thread-safe pool of idle HTTP connections (HTTP/1.1 and optional h2)."""
 
-    def __init__(self):
+    def __init__(self, http2=False):
         self._pool = {}
         self._contexts = {}
         self._lock = threading.Lock()
         self._closed = False
+        self.http2 = bool(http2)
 
     def _context(self, profile, verify):
         key = (profile, verify)
+        alpn = ("http/1.1",)
+        if self.http2:
+            try:
+                import h2  # noqa: F401
+                alpn = ("h2", "http/1.1")
+            except ImportError:
+                pass
         with self._lock:
             context = self._contexts.get(key)
         if context is None:
-            context = create_ssl_context(profile, verify=verify)
+            context = create_ssl_context(profile, verify=verify, alpn=alpn)
             with self._lock:
                 context = self._contexts.setdefault(key, context)
         return context
@@ -567,9 +576,13 @@ class _Transport:
                 context = self._context(profile, verify)
                 sock = context.wrap_socket(sock, server_hostname=host)
                 selected = getattr(sock, "selected_alpn_protocol", lambda: None)()
-                if selected not in (None, "http/1.1"):
+                if selected not in (None, "http/1.1", "h2"):
                     raise TransportError("server negotiated unsupported ALPN protocol %s" % selected)
-            return _Connection(sock, key)
+            conn = _Connection(sock, key)
+            if scheme == "https" and selected == "h2":
+                from .h2engine import H2Protocol
+                conn.h2 = H2Protocol(sock)
+            return conn
         except Exception:
             try:
                 sock.close()
@@ -816,19 +829,33 @@ class _Transport:
             netloc = authority
             target = urlunsplit((scheme, netloc, quote(parts.path or "/", safe="/%:@!$&'()*+,;=-._~"),
                                  quote(parts.query, safe="=&?/:;+,%@!$'()*-._~"), ""))
-        request_line = "%s %s HTTP/1.1\r\n" % (method.upper(), target)
-        rendered = [request_line.encode("ascii")]
-        for name, value in headers:
-            try:
-                rendered.append(("%s: %s\r\n" % (name, value)).encode("latin-1"))
-            except UnicodeEncodeError:
-                raise ValueError("HTTP header %s is not latin-1 encodable" % name)
-        rendered.append(b"\r\n")
-        payload = b"".join(rendered) + body
 
         conn = self._acquire(scheme, host, port, proxy, profile, verify, timeout)
         reusable = False
         try:
+            if conn.h2 is not None:
+                response = self._h2_exchange(conn, method, scheme, authority,
+                                             target, headers, body,
+                                             content_type)
+                reusable = True
+                if sink is not None:
+                    # h2 responses buffer before framing; write through the
+                    # same atomic part-file dance as the streaming path.
+                    part_path = sink + ".reap-part"
+                    with open(part_path, "wb") as fh:
+                        fh.write(response.content)
+                    os.replace(part_path, sink)
+                    response.saved_bytes = len(response.content)
+                return response
+            request_line = "%s %s HTTP/1.1\r\n" % (method.upper(), target)
+            rendered = [request_line.encode("ascii")]
+            for name, value in headers:
+                try:
+                    rendered.append(("%s: %s\r\n" % (name, value)).encode("latin-1"))
+                except UnicodeEncodeError:
+                    raise ValueError("HTTP header %s is not latin-1 encodable" % name)
+            rendered.append(b"\r\n")
+            payload = b"".join(rendered) + body
             conn.sock.sendall(payload)
             response, reusable = self._response(conn, method, url, sink=sink)
             if (_find_header(headers, "Connection") or "").lower() == "close":
@@ -840,6 +867,57 @@ class _Transport:
             raise TransportError(str(exc))
         finally:
             self._release(conn, reusable)
+
+    def _h2_exchange(self, conn, method, scheme, authority, target, headers,
+                     body, content_type):
+        """One HTTP/2 request on the pooled connection's next stream."""
+        status, header_list, content = conn.h2.request(
+            method, target, authority, scheme, headers, body=body,
+            content_type=content_type)
+        cookies = {}
+        cookie_specs = []
+        from http.cookies import SimpleCookie
+        merged = []
+        positions = {}
+        for name, value in header_list:
+            lower = name.lower()
+            if lower == "set-cookie":
+                parsed = SimpleCookie()
+                try:
+                    parsed.load(value)
+                except Exception:
+                    continue
+                for key, morsel in parsed.items():
+                    cookies[key] = morsel.value
+                    expires = None
+                    if morsel["expires"]:
+                        try:
+                            expires = parsedate_to_datetime(
+                                morsel["expires"]).timestamp()
+                        except Exception:
+                            expires = None
+                    cookie_specs.append({
+                        "name": key, "value": morsel.value,
+                        "domain": (morsel["domain"] or "").lstrip(".").lower(),
+                        "path": morsel["path"] or "/",
+                        "secure": bool(morsel["secure"]),
+                        "max_age": morsel["max-age"], "expires": expires})
+                # Set-Cookie lines stay separate, never comma-merged
+                merged.append((name, value))
+                positions[lower] = len(merged) - 1
+                continue
+            if lower in positions:
+                merged[positions[lower]] = (
+                    name, merged[positions[lower]][1] + ", " + value)
+            else:
+                positions[lower] = len(merged)
+                merged.append((name, value))
+        ci = CaseInsensitiveHeaders()
+        for name, value in merged:
+            dict.__setitem__(ci, name, value)
+        return _RawResponse(status, "", "HTTP/2",
+                            urljoin("https://" + authority, target), ci,
+                            content, cookies, cookie_specs=cookie_specs)
 
     def request(self, method, url, profile, headers=None, body=b"", content_type=None,
                 timeout=30, proxy=None, verify=True, auth=None,
@@ -1106,7 +1184,8 @@ class Session:
     def __init__(self, profile="chrome", headers=None, timeout=30, retries=2,
                  proxy=None, rotate=None, profiles=None, retry_policy=None,
                  cache=None, on_response=None, block_rotations=None, verify=True,
-                 allow_redirects=True, max_redirects=10, impersonate=None):
+                 allow_redirects=True, max_redirects=10, impersonate=None,
+                 http2=False):
         if rotate not in (None, "sequence", "random"):
             raise ValueError("rotate must be None, 'sequence', or 'random'")
         if impersonate is not None:
@@ -1130,9 +1209,10 @@ class Session:
         self.max_redirects = max_redirects
         self._headers = tuple(_header_items(headers))
         self.cookies = CookieJar()
+        self.http2 = bool(http2)
         self._counter = 0
         self._counter_lock = threading.Lock()
-        self._transport = _Transport()
+        self._transport = _Transport(http2=http2)
         if proxy is None:
             self._proxy_pool = ()
         elif isinstance(proxy, str):
