@@ -256,12 +256,13 @@ def resolve_profile(profile: Union[str, Profile]) -> Profile:
                          % (profile, choices))
 
 
-def create_ssl_context(profile: Union[str, Profile] = "chrome", verify=True):
+def create_ssl_context(profile: Union[str, Profile] = "chrome", verify=True,
+                       alpn=("http/1.1",)):
     """Build an ``SSLContext`` for a profile.
 
     ``verify`` may be ``False`` (disable certificate checks), ``True`` (system
-    trust store), or a CA bundle path.  Only HTTP/1.1 is offered over ALPN: the
-    transport has no HTTP/2 framing implementation and must not negotiate h2.
+    trust store), or a CA bundle path.  ``alpn`` lists the protocols to offer;
+    the transport only advertises protocols it can actually speak.
     """
     selected = resolve_profile(profile)
     cafile = verify if isinstance(verify, str) else None
@@ -290,7 +291,11 @@ def create_ssl_context(profile: Union[str, Profile] = "chrome", verify=True):
             # default group selection is preferable to rejecting the profile.
             pass
     if hasattr(context, "set_alpn_protocols"):
-        context.set_alpn_protocols(["http/1.1"])
+        try:
+            context.set_alpn_protocols(list(alpn))
+        except ValueError:
+            # OpenSSL build without a protocol: keep the safe default.
+            context.set_alpn_protocols(["http/1.1"])
     return context
 
 
