@@ -25,6 +25,30 @@ pip install "curl-reap[h2]"   # HTTP/2 via hyper-h2 (Session(http2=True) / reap 
 pip install "curl-reap[js]"   # JavaScript rendering via Playwright (reap.render)
 ```
 
+---
+
+<h3 align="center">Sponsors</h3>
+
+<p align="center">
+  <a href="https://go.nodemaven.com/curlreapGH" title="NodeMaven: best proxy for web scraping and automation">
+    <img src="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/sponsors/nodemaven-banner.jpg" alt="NodeMaven: best proxy for web scraping and automation with the highest quality IP" width="720">
+  </a>
+</p>
+
+**[NodeMaven](https://go.nodemaven.com/curlreapGH)**: the most efficient proxy provider for web scraping and automation, with the highest quality IPs on the market.
+
+Why [NodeMaven](https://go.nodemaven.com/curlreapGH)?
+
+- ZIP targeting
+- 99.9% uptime
+- IP filtering: every proxy has a fraud score under 97%
+- No KYC required
+- Free tools: Proxy Bandwidth Checker, Meta Tag Checker, IP Lookup and more
+
+Codes for curl_reap users: `CURLREAP35` for 35% off mobile and residential proxies, `CURLREAP40` for 40% off ISP (static) proxies.
+
+---
+
 ## How it compares
 
 | | requests + bs4 | httpx | curl_cffi | Scrapy | Scrapling | **curl_reap** |
