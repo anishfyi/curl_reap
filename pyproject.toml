@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "curl_reap"
-version = "1.0.0"
+version = "1.1.0"
 description = "Reap the web: ordered HTTP transport, self-healing selectors, structured extraction, and a concurrent crawl engine in one library."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -20,6 +20,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Internet :: WWW/HTTP",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]

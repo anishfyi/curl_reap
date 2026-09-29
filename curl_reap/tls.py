@@ -170,7 +170,7 @@ def _safari_headers(major: int, minor: int = 0) -> HeaderTuple:
 
 
 # ---------------------------------------------------------------------------
-# Target registry. Keys follow the curl_cffi convention so migrating code
+# Target registry. Keys follow the common curl-impersonate naming so migrating code
 # keeps working; values are best-effort behavioural equivalents, not binary
 # clones of the named browsers' ClientHellos.
 # ---------------------------------------------------------------------------
@@ -222,7 +222,7 @@ PROFILES: Dict[str, Profile] = {
 
 
 def _normalize_target(name: str) -> str:
-    # Accept curl_cffi's alternate spellings: safari170 == safari17_0,
+    # Accept the common alternate spellings: safari170 == safari17_0,
     # Chrome124 / CHROME124 == chrome124.
     lowered = name.strip().lower()
     if lowered in FINGERPRINTS:

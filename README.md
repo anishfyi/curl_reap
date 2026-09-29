@@ -16,8 +16,9 @@ pip install curl_reap
 
 Python 3.9+. Two dependencies total: `lxml` and `cssselect`. No compiled curl binding, no downloads at runtime, pure standard-library transport.
 
-> **Release status:** PyPI currently serves 0.2.2, which predates the 1.0 rewrite described here. Until a 1.x release is on PyPI, install from GitHub:
-> `pip install "curl_reap @ git+https://github.com/anishfyi/curl_reap"`
+> **Release status:** the latest release is 1.1.0, on GitHub. PyPI still serves 0.2.2, which predates the 1.0 rewrite described here, until 1.1.0 is uploaded there. Until then, install 1.1.0 from the GitHub release:
+> `pip install "curl_reap @ https://github.com/anishfyi/curl_reap/releases/download/v1.1.0/curl_reap-1.1.0-py3-none-any.whl"`
+> or from the git tag: `pip install "curl_reap @ git+https://github.com/anishfyi/curl_reap@v1.1.0"`
 
 Optional extras when you want more:
 
