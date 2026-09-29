@@ -36,7 +36,7 @@ _GENERIC = re.compile(
 )
 
 DEFAULT_CACHE = ".reap_geocode.json"
-DEFAULT_UA = "curl_reap/1.0 (+https://github.com/anishfyi/curl_reap)"
+DEFAULT_UA = "curl_reap/1.1 (+https://github.com/anishfyi/curl_reap)"
 
 
 class Geocoder:

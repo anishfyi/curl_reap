@@ -1189,7 +1189,7 @@ class Session:
         if rotate not in (None, "sequence", "random"):
             raise ValueError("rotate must be None, 'sequence', or 'random'")
         if impersonate is not None:
-            # curl_cffi-style alias: Session(impersonate="chrome124")
+            # Versioned-target alias: Session(impersonate="chrome124")
             profile = impersonate
         self.profile = resolve_profile(profile)
         if profiles is None:
