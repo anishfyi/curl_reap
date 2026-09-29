@@ -37,7 +37,8 @@ def _cmd_get(args):
     elif args.html:
         print(r.text)
     else:
-        print(r.markdown(max_len=args.max_len))    return 0 if r.ok else 1
+        print(r.markdown(max_len=args.max_len))
+    return 0 if r.ok else 1
 
 
 def _cmd_meta(args):

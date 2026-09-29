@@ -80,7 +80,7 @@ def render_if_empty(response, **kwargs):
     return _rie(response, **kwargs)
 
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     # transport
