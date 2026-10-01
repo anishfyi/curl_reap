@@ -1,3 +1,10 @@
+<p align="center">
+  <a href="https://velofy.co/curl_reap/"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/tile-dark.svg">
+    <img alt="curl_reap" src="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/tile-light.svg" width="360">
+  </picture></a>
+</p>
+
 # curl_reap
 
 **Reap the web.** One Python library for scraping: a hardened HTTP transport, self-healing selectors, structured extraction, and a concurrent crawl engine.
