@@ -9,7 +9,7 @@ description = "Reap the web: ordered HTTP transport, self-healing selectors, str
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-authors = [{ name = "Anish", email = "anishfyi@gmail.com" }]
+authors = [{ name = "Anish Kr Singh", email = "anish@velofy.co" }]
 keywords = ["scraping", "crawler", "http", "tls", "selectors", "lxml", "spider"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
