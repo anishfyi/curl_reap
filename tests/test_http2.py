@@ -3,8 +3,11 @@
 Needs the optional h2 extra: pip install "curl-reap[h2]".
 """
 import http.server
+from pathlib import Path
+import shutil
 import ssl
 import socketserver
+import subprocess
 import threading
 
 import pytest
@@ -17,8 +20,33 @@ from h2.events import (DataReceived, RequestReceived,  # noqa: E402
 
 import curl_reap                           # noqa: E402
 
-CERT = "/tmp/h2cert/cert.pem"
-KEY = "/tmp/h2cert/key.pem"
+@pytest.fixture(scope="module")
+def tls_material(tmp_path_factory):
+    """Create an isolated localhost CA/cert instead of relying on /tmp state."""
+    openssl = shutil.which("openssl")
+    if not openssl:
+        pytest.skip("HTTP/2 TLS tests require openssl")
+    root = tmp_path_factory.mktemp("h2cert")
+    cert = root / "cert.pem"
+    key = root / "key.pem"
+    config = root / "openssl.cnf"
+    config.write_text(
+        "[req]\n"
+        "distinguished_name=dn\n"
+        "x509_extensions=v3\n"
+        "prompt=no\n"
+        "[dn]\nCN=localhost\n"
+        "[v3]\nsubjectAltName=DNS:localhost\n"
+        "basicConstraints=critical,CA:TRUE\n"
+        "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign\n"
+    )
+    subprocess.run(
+        [openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(key), "-out", str(cert), "-days", "1",
+         "-config", str(config)],
+        check=True, capture_output=True,
+    )
+    return cert, key
 
 
 class H2Handler:
@@ -65,7 +93,7 @@ class H2Handler:
             return
 
 
-def _serve_tls(alpn_protocols):
+def _serve_tls(alpn_protocols, cert: Path, key: Path):
     class Threading(socketserver.ThreadingMixIn, http.server.HTTPServer):
         daemon_threads = True
 
@@ -83,7 +111,7 @@ def _serve_tls(alpn_protocols):
     raw = Threading(("127.0.0.1", 0), lambda *a: None)  # placeholder app
     port = raw.server_address[1]
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(CERT, KEY)
+    context.load_cert_chain(cert, key)
     context.set_alpn_protocols(alpn_protocols)
 
     def accept_loop():
@@ -113,42 +141,48 @@ def _serve_tls(alpn_protocols):
 
 
 @pytest.fixture(scope="module")
-def h2_base():
-    return _serve_tls(["h2"])
+def h2_base(tls_material):
+    cert, key = tls_material
+    return _serve_tls(["h2"], cert, key), cert
 
 
 @pytest.fixture(scope="module")
-def plain11_base():
-    return _serve_tls(["http/1.1"])
+def plain11_base(tls_material):
+    cert, key = tls_material
+    return _serve_tls(["http/1.1"], cert, key), cert
 
 
 def test_http2_round_trip_and_connection_reuse(h2_base):
-    with curl_reap.Session(http2=True, verify="/tmp/h2cert/cert.pem") as s:
-        r = s.get(h2_base + "/first", impersonate="chrome131")
+    base, cert = h2_base
+    with curl_reap.Session(http2=True, verify=str(cert)) as s:
+        r = s.get(base + "/first", impersonate="chrome131")
         assert r.status == 200
         assert r.text.startswith("h2:Mozilla/5.0"), r.text
         assert r.raw.http_version == "HTTP/2"
         assert r.cookies.get("h2c") == "1"
         # same pooled connection serves the second stream
-        r2 = s.get(h2_base + "/second", impersonate="firefox133")
+        r2 = s.get(base + "/second", impersonate="firefox133")
         assert r2.status == 200
         assert "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0)" in r2.text
 
 
 def test_cookie_set_over_h2_replays(h2_base):
-    with curl_reap.Session(http2=True, verify="/tmp/h2cert/cert.pem") as s:
-        s.get(h2_base + "/warmup")
+    base, cert = h2_base
+    with curl_reap.Session(http2=True, verify=str(cert)) as s:
+        s.get(base + "/warmup")
         jar_before = s.cookies.get_dict().get("h2c")
         assert jar_before == "1"
 
 
 def test_graceful_fallback_when_server_is_1_1_only(plain11_base):
-    with curl_reap.Session(http2=True, verify="/tmp/h2cert/cert.pem") as s:
-        r = s.get(plain11_base + "/x")
+    base, cert = plain11_base
+    with curl_reap.Session(http2=True, verify=str(cert)) as s:
+        r = s.get(base + "/x")
         assert r.status == 200 and r.text == "ok"
 
 
 def test_http2_off_by_default(h2_base):
-    with curl_reap.Session(verify="/tmp/h2cert/cert.pem") as s:
-        r = s.get(h2_base + "/x")
+    base, cert = h2_base
+    with curl_reap.Session(verify=str(cert)) as s:
+        r = s.get(base + "/x")
         assert r.raw.http_version != "HTTP/2"

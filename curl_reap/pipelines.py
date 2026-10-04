@@ -22,7 +22,10 @@ class Pipeline:
 
 
 class DedupPipeline(Pipeline):
-    """Drop items already seen. key=None dedups on the whole item."""
+    """Drop items already seen. key=None dedups on the whole item.
+
+    The seen set grows with every unique accepted item, so deduping is a
+    correctness aid, not an absolute memory bound for long crawls."""
 
     def __init__(self, key=None):
         self.key = key

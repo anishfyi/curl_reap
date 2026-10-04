@@ -30,9 +30,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-js = ["playwright>=1.40"]
+js = ["playwright>=1.51,<1.52"]
 h2 = ["h2>=4.0,<5"]
-dev = ["pytest>=7.0", "build>=1.0", "twine>=5.0"]
+server = ["fastapi>=0.115,<0.116", "uvicorn>=0.30,<0.31", "redis>=5.2,<5.3"]
+dev = ["pytest>=7.0", "build>=1.0", "twine>=5.0", "httpx>=0.27,<0.28"]
 
 [project.scripts]
 reap = "curl_reap.cli:main"

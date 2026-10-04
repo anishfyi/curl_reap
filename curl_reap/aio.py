@@ -20,14 +20,15 @@ class AsyncSession:
                  proxy=None, rotate=None, profiles=None, retry_policy=None,
                  cache=None, on_response=None, block_rotations=None, verify=True,
                  allow_redirects=True, max_redirects=10, impersonate=None,
-                 http2=False):
+                 http2=False, sticky=False, url_policy=None):
         self._session = Session(
             profile=profile, headers=headers, timeout=timeout, retries=retries,
             proxy=proxy, rotate=rotate, profiles=profiles,
             retry_policy=retry_policy, cache=cache, on_response=on_response,
             block_rotations=block_rotations, verify=verify,
             allow_redirects=allow_redirects, max_redirects=max_redirects,
-            impersonate=impersonate, http2=http2)
+            impersonate=impersonate, http2=http2, sticky=sticky,
+            url_policy=url_policy)
 
     @property
     def profile(self):
@@ -36,6 +37,10 @@ class AsyncSession:
     @property
     def retries(self):
         return self._session.retries
+
+    @property
+    def cookies(self):
+        return self._session.cookies
 
     async def request(self, method, url, **kwargs):
         return await asyncio.to_thread(self._session.request, method, url, **kwargs)

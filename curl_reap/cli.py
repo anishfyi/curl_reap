@@ -96,6 +96,94 @@ def _cmd_crawl(args):
     return 0
 
 
+def _service_env():
+    """Shared env config for serve/worker. Secrets stay in the environment."""
+    import os
+    api_key = os.environ.get("REAP_API_KEY")
+    redis_url = os.environ.get("REAP_REDIS_URL", "redis://127.0.0.1:6379/0")
+    raw = os.environ.get("REAP_ALLOWED_ORIGINS", "")
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    proxy_url = os.environ.get("REAP_PROXY_URL")
+    if not api_key:
+        print("[reap] REAP_API_KEY is not set", file=sys.stderr)
+        return None
+    if not origins:
+        print("[reap] REAP_ALLOWED_ORIGINS is empty "
+              "(comma-separated scheme://host:port list)", file=sys.stderr)
+        return None
+    return api_key, redis_url, origins, proxy_url
+
+
+def _redis_queue(redis_url):
+    """Connect the job queue without ever echoing the URL - it may carry
+    a password."""
+    try:
+        import redis as _redis
+        from .jobs import RedisJobQueue
+    except ImportError:
+        print("[reap] the job service needs the server extra: "
+              "pip install 'curl-reap[server]'", file=sys.stderr)
+        return None
+    try:
+        client = _redis.Redis.from_url(redis_url)
+        queue = RedisJobQueue(client)
+    except Exception:
+        print("[reap] could not connect to Redis via REAP_REDIS_URL",
+              file=sys.stderr)
+        return None
+    return queue
+
+
+def _cmd_serve(args):
+    env = _service_env()
+    if env is None:
+        return 2
+    api_key, redis_url, origins, proxy_url = env
+    try:
+        import uvicorn
+        from .service import create_app
+    except ImportError:
+        print("[reap] serve needs the server extra: "
+              "pip install 'curl-reap[server]'", file=sys.stderr)
+        return 2
+    queue = _redis_queue(redis_url)
+    if queue is None:
+        return 2
+    try:
+        app = create_app(queue=queue, api_key=api_key,
+                         allowed_origins=origins)
+    except ValueError as exc:
+        print("[reap] %s" % exc, file=sys.stderr)
+        return 2
+    uvicorn.run(app, host=args.host, port=args.port)
+    return 0
+
+
+def _cmd_worker(args):
+    env = _service_env()
+    if env is None:
+        return 2
+    api_key, redis_url, origins, proxy_url = env
+    try:
+        from .jobs import Worker
+    except ImportError:
+        print("[reap] worker needs the server extra: "
+              "pip install 'curl-reap[server]'", file=sys.stderr)
+        return 2
+    queue = _redis_queue(redis_url)
+    if queue is None:
+        return 2
+    try:
+        worker = Worker(queue, origins, proxy=proxy_url)
+    except ValueError as exc:
+        print("[reap] %s" % exc, file=sys.stderr)
+        return 2
+    print("[reap] worker %s draining jobs" % worker.worker_id,
+          file=sys.stderr)
+    worker.serve_forever()
+    return 0
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="reap", description="reap the web from the shell")
     p.add_argument("--http2", action="store_true",
@@ -140,6 +228,17 @@ def build_parser():
     c.add_argument("--robots", action="store_true", help="respect robots.txt")
     c.add_argument("-o", "--out", help="output file (.jsonl/.csv/.db)")
     c.set_defaults(func=_cmd_crawl)
+
+    s = sub.add_parser("serve", help="run the private job API (server extra; "
+                                   "reads REAP_API_KEY/REAP_REDIS_URL/"
+                                   "REAP_ALLOWED_ORIGINS)")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8000)
+    s.set_defaults(func=_cmd_serve)
+
+    w = sub.add_parser("worker", help="run one distributed job worker "
+                                      "(server extra; same env as serve)")
+    w.set_defaults(func=_cmd_worker)
     return p
 
 

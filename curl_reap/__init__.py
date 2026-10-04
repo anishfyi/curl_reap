@@ -49,6 +49,7 @@ from .http import (
     RetryPolicy,
     Session,
     TransportError,
+    URLPolicyError,
     detect_encoding,
     download,
     fetch,
@@ -64,34 +65,23 @@ from .pipelines import (
     Pipeline,
     SqlitePipeline,
 )
+from .render import BrowserSession, render, render_if_empty
 from .spider import Request, SitemapSpider, Spider
 from .throttle import AutoThrottle
-
-
-def render(url, **kwargs):
-    """Fetch ``url`` in a real browser (optional Playwright extra)."""
-    from .render import render as _render
-    return _render(url, **kwargs)
-
-
-def render_if_empty(response, **kwargs):
-    """Render only when the plain-HTTP response looks hollow."""
-    from .render import render_if_empty as _rie
-    return _rie(response, **kwargs)
-
 
 __version__ = "1.1.0"
 
 __all__ = [
     # transport
     "get", "post", "fetch", "download", "Session", "Response", "RetryPolicy",
-    "HTTPStatusError", "TransportError", "CookieJar", "PROFILES",
+    "HTTPStatusError", "TransportError", "URLPolicyError", "CookieJar",
+    "PROFILES",
     "FINGERPRINTS", "Profile",
     "DiskCache",
     "detect_encoding",
     "AsyncSession", "aget", "apost",
     # rendering (optional playwright extra)
-    "render", "render_if_empty",
+    "render", "render_if_empty", "BrowserSession",
     # parsing
     "Selector", "SelectorList",
     "signature", "similarity", "save", "relocate",

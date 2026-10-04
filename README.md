@@ -31,7 +31,8 @@ Optional extras when you want more:
 
 ```bash
 pip install "curl-reap[h2]"   # HTTP/2 via hyper-h2 (Session(http2=True) / reap --http2 get URL)
-pip install "curl-reap[js]"   # JavaScript rendering via Playwright (reap.render)
+pip install "curl-reap[js]"   # JavaScript rendering via Playwright (reap.render, BrowserSession)
+pip install "curl-reap[server]"  # private job API + worker (reap serve / reap worker)
 ```
 
 ## Example
@@ -44,6 +45,24 @@ page = reap.get("https://quotes.toscrape.com", profile="chrome")
 page = reap.get("https://quotes.toscrape.com", impersonate="chrome124")
 print(page.css("span.text::text").getall())
 print(page.jsonld())
+
+# structured extraction in one call
+print(page.extract({"quotes": "span.text::text",
+                    "authors": "small.author::text"}, many=True))
+print(page.markdown(main_only=True))
+
+# reuse a real browser for ordinary JS pages (optional `js` extra)
+with reap.BrowserSession(url_policy=lambda u: u.startswith(
+        "https://quotes.toscrape.com")) as browser:
+    rendered = browser.goto("https://quotes.toscrape.com/js/")
+    rendered = browser.follow("/page/2")
+
+# confine a session to an origin allowlist and spot bot-wall outcomes
+session = reap.Session(
+    url_policy=lambda u: u.startswith("https://quotes.toscrape.com"))
+page = session.get("https://quotes.toscrape.com")
+print(page.block_reason)   # None | rate_limited | proxy_auth_required |
+                           # forbidden | challenge
 ```
 
 ---
@@ -99,6 +118,66 @@ What curl_reap puts in one install, and which of requests + bs4, httpx, curl_cff
 - **Zero heavy dependencies:** httpx.
 - **One install does everything:** partial in Scrapy and Scrapling.
 
+## Hardened sessions and crawling
+
+The transport keeps HTTP-level state correct so long crawls don't drift:
+
+- **Cookies** are scoped by `(domain, path, name)`: host-only cookies never reach subdomains, `Domain` attributes are accepted only for the origin host or a parent (foreign and IP-literal domains are dropped), paths match on real boundaries (`/app` never leaks to `/apple`), `Max-Age=0` deletes the exact scope, and `CookieJar.get_dict()` is a documented lossy flattening for compatibility. Full public-suffix validation is not implemented.
+- **Redirects** strip `Authorization`, explicit `Cookie`, `Proxy-Authorization` and `Host` whenever the origin (scheme + host + effective port) changes, so credentials cannot leak across hosts or an `https -> http` downgrade; `Response.history` exposes the redirect chain as Responses.
+- **`Session(url_policy=callable)`** is consulted before every outgoing URL - the initial request (params applied, cache lookups included) and each redirect hop - before a socket is touched. A falsy return raises `URLPolicyError`. This is the origin-confinement seam the private service uses; it is not a complete egress firewall (see below).
+- **`Session(sticky=True)`** pins one profile/proxy for the session's life; retries and 4xx signals never rotate a sticky route. `RetryPolicy(allowed_methods=...)` gates which methods replay - POST/PATCH are never retried unless you opt in - and `Retry-After` is honored verbatim rather than clamped to `max_backoff`.
+- **`Response.block_reason`** reports `rate_limited` (429), `proxy_auth_required` (407), `forbidden` (403), or `challenge` when the body heuristically looks like an interstitial. `render_if_empty` only renders successful hollow pages - it does not execute or retry challenge interstitials. JS rendering via `reap.render` / `BrowserSession` is for ordinary JavaScript-heavy pages on sites you are allowed to fetch; it is not a challenge bypass, and the stdlib transport does not claim a better TLS fingerprint than curl_cffi.
+
+`BrowserSession` (optional `js` extra) keeps one browser/context/page alive across `goto()` calls so cookies and storage persist, reports the real navigation status and final URL (never a fabricated 200), optionally attaches to an authorized remote browser via `cdp_url`, and can route-gate document and subresource requests through the same `url_policy`.
+
+The `Reaper` engine grew the knobs large crawls need: `collect_items=False` streams items through pipelines/`on_item` without storing them, `per_domain_concurrency` caps in-flight requests per origin, `max_pending` bounds the in-memory frontier (overflow is dropped into `stats["queue_dropped"]` - the frontier is not durable and has no resumability), dedup happens at schedule time, the `max_pages` budget is reserved atomically before the network and counts failed fetches too, per-domain throttling reserves monotonic start slots, and 429/503 `Retry-After` becomes a real cooldown. Responses with `status >= 400` or a challenge-looking body go to the errback with the `Response`, never to `parse`.
+
+## Private job service (optional `server` extra)
+
+For a small private fleet, `pip install "curl-reap[server]"` adds a FastAPI service and a Redis-backed job queue (`curl_reap.service`, `curl_reap.jobs`).
+
+Keep every secret out of history and config files - store them once with [smbk](https://github.com/anishfyi/smbk) and inject them at run time:
+
+```bash
+smbk add REAP_API_KEY        # shared secret for the x-reap-key header
+smbk add REAP_REDIS_URL      # only when the URL carries a password
+smbk add REAP_PROXY_URL      # optional single dashboard proxy for workers
+
+# plain (non-secret) configuration stays in the environment:
+export REAP_REDIS_URL="redis://127.0.0.1:6379/0"            # if it has no password
+export REAP_ALLOWED_ORIGINS="https://example.com:443,http://internal:8080"
+
+smbk run -k REAP_API_KEY -- reap serve --host 127.0.0.1 --port 8000
+smbk run -k REAP_API_KEY -k REAP_REDIS_URL -k REAP_PROXY_URL -- reap worker
+```
+
+- `POST /jobs` takes `{url, css?, max_chars?}` for **one page** and returns `202 {id}`; `GET /jobs/{id}` reports `queued/running/succeeded/failed` with a capped result (`url`, `status`, `fields`, `markdown`, `meta`, `jsonld`, <= 1 MiB). The API is deliberately a single-page extraction endpoint: large multi-page crawls stay a library concern via `Reaper`; there is no crawl endpoint, and clients cannot supply proxies, headers, auth or scripts.
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/jobs \
+    -H "x-reap-key: $REAP_API_KEY" -H 'content-type: application/json' \
+    -d '{"url": "https://example.com/", "css": {"title": "h1::text"}}'
+curl -sS http://127.0.0.1:8000/jobs/<id> -H "x-reap-key: $REAP_API_KEY"
+```
+
+- Delivery is **at-least-once** via Redis sorted-set leases with fencing tokens; crashed workers' jobs are re-claimed up to `max_attempts`. Pending jobs never expire (configure AOF persistence, e.g. `appendonly yes` + `appendfsync everysec`, and a `noeviction` policy for durability), terminal jobs expire after `result_ttl`.
+- Workers fetch through `Session(sticky=True, retries=0)` confined by the exact `REAP_ALLOWED_ORIGINS` allowlist, respect robots.txt (fail-closed on redirect/403/429/5xx/challenge robots fetches, transient failures retried after a 5-minute cache), pace **every** outgoing hop (robots probe, page, each redirect) through a shared Redis reservation (default 1s per origin) plus a shared 429/`Retry-After` cooldown, and report `status`/final URL/`block_reason` on failure - never raw exceptions that could carry secrets. Replicas scale horizontally: run N `reap worker` processes with identical env against the same Redis.
+- **Deployment limits:** keep the API on a private network behind TLS ingress (the `x-reap-key` shared secret is not an identity system); the origin allowlist is checked per URL but is *not* a complete egress firewall - add real egress rules at the network layer since an allowed hostname can still resolve elsewhere (DNS rebinding); set container/process resource limits; raw response bodies are buffered whole in memory, so cap `max_chars` and site size expectations accordingly; the crawl frontier is in-memory only (no durable/resumable queue).
+- A `Dockerfile` builds a non-root image with the `server` extra installed:
+
+```bash
+docker build -t curl-reap .
+docker run --rm -e REAP_ALLOWED_ORIGINS -p 8000:8000 \
+    curl-reap serve --host 0.0.0.0 --port 8000   # container needs the explicit 0.0.0.0
+smbk run -k REAP_API_KEY -k REAP_REDIS_URL -- \
+    docker run --rm -e REAP_ALLOWED_ORIGINS \
+    -e REAP_API_KEY -e REAP_REDIS_URL curl-reap worker
+```
+
+Secrets still come from the environment (smbk, Docker secrets, or your orchestrator's env injection); nothing is baked into the image.
+
+- A provider-specific NodeMaven SDK (sticky residential sessions etc.) is intentionally *not* included in v1 of the service; generic `proxy=` support in `Session` works today, and the NodeMaven sticky-session concept maps onto `Session(sticky=True)` when such an SDK lands.
+
 ## Documentation
 
 Full docs live at **[velofy.co/curl_reap](https://velofy.co/curl_reap/)**:
@@ -126,7 +205,11 @@ pip install -e ".[dev]"
 python -m pytest tests/ -q
 ```
 
-Install `.[dev,h2]` to include the HTTP/2 tests.
+Install `.[dev,h2]` to include the HTTP/2 tests. Those tests spin a real
+TLS server and expect a throwaway certificate at `/tmp/h2cert/{cert,key}.pem`;
+generate one locally (e.g. `openssl req -x509 -newkey rsa:2048 -nodes
+-keyout /tmp/h2cert/key.pem -out /tmp/h2cert/cert.pem -subj /CN=localhost
+-days 7`) or those four tests skip/fail.
 
 ## Credits
 

@@ -48,11 +48,39 @@ class TransportError(OSError):
     """A connection, TLS, or HTTP framing failure."""
 
 
+class URLPolicyError(ValueError):
+    """A configured ``url_policy`` rejected an outbound URL before it was sent."""
+
+
+def retry_after_seconds(value):
+    """Seconds a ``Retry-After`` header asks for, or None when unparsable."""
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(str(value))
+            return max(0.0, retry_at.timestamp() - time.time())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+
 class RetryPolicy:
-    """Exponential backoff with jitter and optional ``Retry-After`` support."""
+    """Exponential backoff with jitter and optional ``Retry-After`` support.
+
+    Only ``allowed_methods`` are replayed: by default the safe/idempotent set
+    (GET, HEAD, OPTIONS, PUT, DELETE). Replaying POST/PATCH requires opting in
+    explicitly, e.g. ``RetryPolicy(allowed_methods={"GET", "POST"})``.
+    ``Retry-After`` is honored verbatim - ``max_backoff`` caps only the
+    exponential fallback delay.
+    """
+
+    IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
 
     def __init__(self, retries=2, backoff=0.5, max_backoff=30.0,
-                 statuses=RETRY_STATUSES, respect_retry_after=True):
+                 statuses=RETRY_STATUSES, respect_retry_after=True,
+                 allowed_methods=None):
         if retries < 0:
             raise ValueError("retries must be >= 0")
         if backoff < 0 or max_backoff < 0:
@@ -62,21 +90,21 @@ class RetryPolicy:
         self.max_backoff = float(max_backoff)
         self.statuses = frozenset(statuses)
         self.respect_retry_after = respect_retry_after
+        self.allowed_methods = frozenset(
+            str(m).upper() for m in
+            (self.IDEMPOTENT_METHODS if allowed_methods is None else allowed_methods))
 
     def should_retry_status(self, status):
         return status in self.statuses
 
+    def allows_method(self, method):
+        return str(method).upper() in self.allowed_methods
+
     def delay(self, attempt, retry_after=None):
         if retry_after is not None and self.respect_retry_after:
-            try:
-                return min(max(0.0, float(retry_after)), self.max_backoff)
-            except (TypeError, ValueError):
-                try:
-                    retry_at = parsedate_to_datetime(str(retry_after))
-                    seconds = retry_at.timestamp() - time.time()
-                    return min(max(0.0, seconds), self.max_backoff)
-                except (TypeError, ValueError, OverflowError):
-                    pass
+            seconds = retry_after_seconds(retry_after)
+            if seconds is not None:
+                return seconds
         base = self.backoff * (2 ** attempt)
         return min(self.max_backoff, base * (0.5 + random.random()))
 
@@ -347,6 +375,7 @@ class _RawResponse:
         self.cookies = cookies or {}
         self.cookie_specs = cookie_specs or []
         self.saved_bytes = saved_bytes
+        self.history = []
         encoding = detect_encoding(content, headers) or "utf-8"
         try:
             self.text = content.decode(encoding, "replace")
@@ -393,6 +422,41 @@ class _StreamDecoder:
             raise TransportError("truncated compressed response body")
 
 
+def _parse_set_cookie(value):
+    """Parse one Set-Cookie header into ``(name, value, spec)`` triples.
+
+    ``spec["domain"]`` is None when no Domain attribute was sent (host-only
+    cookie) and ``spec["path"]`` is None when no Path attribute was sent
+    (the jar then applies the request's default-path); both are kept
+    distinct from explicit ``/`` or attribute values so scope semantics
+    survive into :class:`CookieJar`.
+    """
+    parsed = SimpleCookie()
+    try:
+        parsed.load(value)
+    except Exception:
+        return ()
+    out = []
+    for key, morsel in parsed.items():
+        expires = None
+        raw_expires = morsel["expires"]
+        if raw_expires:
+            try:
+                expires = parsedate_to_datetime(raw_expires).timestamp()
+            except Exception:
+                expires = None
+        out.append((key, morsel.value, {
+            "name": key,
+            "value": morsel.value,
+            "domain": (morsel["domain"] or "").lstrip(".").lower() or None,
+            "path": morsel["path"] or None,
+            "secure": bool(morsel["secure"]),
+            "max_age": morsel["max-age"],
+            "expires": expires,
+        }))
+    return tuple(out)
+
+
 def _body_streamer(write, headers):
     """Wrap ``write`` with incremental decoding when the body is compressed."""
     encoding = (headers.get("Content-Encoding") or "").strip().lower()
@@ -413,43 +477,108 @@ def _body_streamer(write, headers):
     return feed
 
 
+def _is_ip_literal(host):
+    if not host:
+        return False
+    if ":" in host:
+        return True
+    return all(c.isdigit() or c == "." for c in host)
+
+
+def _default_cookie_path(request_path):
+    """RFC 6265 default-path: the request path's directory."""
+    if not request_path or not request_path.startswith("/"):
+        return "/"
+    if request_path.count("/") == 1:
+        return "/"
+    return request_path[:request_path.rindex("/")] or "/"
+
+
+def _cookie_path_match(request_path, cookie_path):
+    """Path-match with a real boundary: ``/app`` must not match ``/apple``."""
+    if request_path == cookie_path:
+        return True
+    if not request_path.startswith(cookie_path):
+        return False
+    if cookie_path.endswith("/"):
+        return True
+    return request_path[len(cookie_path):len(cookie_path) + 1] == "/"
+
+
+def _cookie_domain_match(host, domain, host_only):
+    if host_only:
+        return host == domain
+    return host == domain or host.endswith("." + domain)
+
+
 class CookieJar:
-    """In-memory cookie store scoped by domain, path and scheme.
+    """In-memory cookie store scoped by domain, path and name.
 
     ``Session`` keeps one jar for its lifetime: response cookies are stored
     automatically (including on every redirect hop) and replayed on matching
     requests. Thread-safe. Cookies live only as long as the process.
+
+    Cookies set without a ``Domain`` attribute are host-only: they never
+    reach subdomains. A ``Domain`` attribute is accepted only when it names
+    the origin host or a parent of it - foreign hosts and IP-literal domains
+    are rejected outright. Domain cookies match the host and its subdomains
+    with or without the leading dot. Full public-suffix validation is not
+    performed, so ``Domain=co.uk`` on ``example.co.uk`` is accepted.
+
+    ``get_dict`` is a lossy flattened view: same-named cookies held under
+    different (domain, path) scopes coexist in the jar but collapse to one
+    entry here (the most recently stored wins).
     """
 
     def __init__(self):
         self._lock = threading.Lock()
         # name -> {"value","domain","path","secure","expires"}
         self._cookies = {}
+        self._seq = 0
 
     def absorb(self, url, specs):
         """Store parsed Set-Cookie attribute dicts from one response."""
         parts = urlsplit(url)
-        default_domain = (parts.hostname or "").lower()
+        origin_host = (parts.hostname or "").lower()
+        request_path = parts.path or "/"
         now = time.time()
         with self._lock:
             for spec in specs:
-                domain = (spec.get("domain") or default_domain).lower()
+                name = spec["name"]
+                raw_domain = spec.get("domain")
+                host_only = not raw_domain
+                if host_only:
+                    domain = origin_host
+                else:
+                    domain = str(raw_domain).lstrip(".").lower()
+                    if (not domain or _is_ip_literal(origin_host)
+                            or _is_ip_literal(domain)
+                            or not (origin_host == domain
+                                    or origin_host.endswith("." + domain))):
+                        continue
+                path = spec.get("path")
+                if not path or not str(path).startswith("/"):
+                    path = _default_cookie_path(request_path)
+                key = (domain, path, name)
                 expires = spec.get("expires")
                 max_age = spec.get("max_age")
-                if max_age:
+                if max_age is not None and str(max_age) != "":
                     try:
                         expires = now + float(max_age)
                     except (TypeError, ValueError):
                         pass
                 if expires is not None and expires <= now:
-                    self._cookies.pop(spec["name"], None)
+                    self._cookies.pop(key, None)
                     continue
-                self._cookies[spec["name"]] = {
+                self._seq += 1
+                self._cookies[key] = {
                     "value": spec["value"],
                     "domain": domain,
-                    "path": spec.get("path") or "/",
+                    "path": path,
                     "secure": bool(spec.get("secure")),
                     "expires": expires,
+                    "host_only": host_only,
+                    "seq": self._seq,
                 }
 
     def store(self, url, pairs):
@@ -465,32 +594,36 @@ class CookieJar:
         now = time.time()
         pairs = []
         with self._lock:
-            for name in list(self._cookies):
-                cookie = self._cookies[name]
+            for key in list(self._cookies):
+                cookie = self._cookies[key]
                 if cookie["expires"] is not None and cookie["expires"] <= now:
-                    del self._cookies[name]
+                    del self._cookies[key]
                     continue
                 if cookie["secure"] and not secure:
                     continue
-                domain = cookie["domain"]
-                if not (host == domain or domain.startswith(".") and host.endswith(domain)):
+                if not _cookie_domain_match(host, cookie["domain"], cookie["host_only"]):
                     continue
-                if not path.startswith(cookie["path"]):
+                if not _cookie_path_match(path, cookie["path"]):
                     continue
-                pairs.append("%s=%s" % (name, cookie["value"]))
-        return "; ".join(pairs)
+                pairs.append((cookie["path"], cookie["seq"],
+                              "%s=%s" % (key[2], cookie["value"])))
+        pairs.sort(key=lambda item: (-len(item[0]), item[1]))
+        return "; ".join(pair[2] for pair in pairs)
 
     def get_dict(self):
         with self._lock:
-            return {name: c["value"] for name, c in self._cookies.items()
-                    if c["expires"] is None or c["expires"] > time.time()}
+            now = time.time()
+            return {key[2]: c["value"]
+                    for key, c in sorted(self._cookies.items(),
+                                         key=lambda kv: kv[1]["seq"])
+                    if c["expires"] is None or c["expires"] > now}
 
     def clear(self):
         with self._lock:
             self._cookies.clear()
 
     def __repr__(self):
-        return "CookieJar(%d cookies)" % len(self.get_dict())
+        return "CookieJar(%d cookies)" % len(self._cookies)
 
 
 class _Transport:
@@ -701,30 +834,9 @@ class _Transport:
         cookie_specs = []
         for name, value in received_headers:
             if name.lower() == "set-cookie":
-                parsed = SimpleCookie()
-                try:
-                    parsed.load(value)
-                except Exception:
-                    continue
-                for key, morsel in parsed.items():
-                    cookies[key] = morsel.value
-                    expires = None
-                    raw_expires = morsel["expires"]
-                    if raw_expires:
-                        try:
-                            from email.utils import parsedate_to_datetime as _pdt
-                            expires = _pdt(raw_expires).timestamp()
-                        except Exception:
-                            expires = None
-                    cookie_specs.append({
-                        "name": key,
-                        "value": morsel.value,
-                        "domain": (morsel["domain"] or "").lstrip(".").lower(),
-                        "path": morsel["path"] or "/",
-                        "secure": bool(morsel["secure"]),
-                        "max_age": morsel["max-age"],
-                        "expires": expires,
-                    })
+                for cname, cvalue, spec in _parse_set_cookie(value):
+                    cookies[cname] = cvalue
+                    cookie_specs.append(spec)
         raw = _RawResponse(status, reason, version, url, headers, decoded, cookies,
                            cookie_specs=cookie_specs, saved_bytes=saved)
         return raw, reusable
@@ -876,32 +988,14 @@ class _Transport:
             content_type=content_type)
         cookies = {}
         cookie_specs = []
-        from http.cookies import SimpleCookie
         merged = []
         positions = {}
         for name, value in header_list:
             lower = name.lower()
             if lower == "set-cookie":
-                parsed = SimpleCookie()
-                try:
-                    parsed.load(value)
-                except Exception:
-                    continue
-                for key, morsel in parsed.items():
-                    cookies[key] = morsel.value
-                    expires = None
-                    if morsel["expires"]:
-                        try:
-                            expires = parsedate_to_datetime(
-                                morsel["expires"]).timestamp()
-                        except Exception:
-                            expires = None
-                    cookie_specs.append({
-                        "name": key, "value": morsel.value,
-                        "domain": (morsel["domain"] or "").lstrip(".").lower(),
-                        "path": morsel["path"] or "/",
-                        "secure": bool(morsel["secure"]),
-                        "max_age": morsel["max-age"], "expires": expires})
+                for cname, cvalue, spec in _parse_set_cookie(value):
+                    cookies[cname] = cvalue
+                    cookie_specs.append(spec)
                 # Set-Cookie lines stay separate, never comma-merged
                 merged.append((name, value))
                 positions[lower] = len(merged) - 1
@@ -919,18 +1013,36 @@ class _Transport:
                             urljoin("https://" + authority, target), ci,
                             content, cookies, cookie_specs=cookie_specs)
 
+    _STRIP_ON_ORIGIN_CHANGE = frozenset({
+        "authorization", "cookie", "proxy-authorization", "host"})
+    _STRIP_ON_METHOD_REWRITE = frozenset({
+        "content-length", "content-type", "content-encoding",
+        "transfer-encoding", "content-md5"})
+
+    @staticmethod
+    def _origin(url):
+        parts = urlsplit(url)
+        scheme = parts.scheme.lower()
+        port = parts.port or (443 if scheme == "https" else 80)
+        return (scheme, (parts.hostname or "").lower(), port)
+
     def request(self, method, url, profile, headers=None, body=b"", content_type=None,
                 timeout=30, proxy=None, verify=True, auth=None,
-                allow_redirects=True, max_redirects=10, cookie_jar=None, sink=None):
+                allow_redirects=True, max_redirects=10, cookie_jar=None, sink=None,
+                url_policy=None):
         current_method = method.upper()
         current_url = url
         current_body = body
         current_content_type = content_type
         current_auth = auth
+        base_headers = headers
         redirects = 0
+        history = []
         explicit_cookie = headers is not None and _find_header(headers, "Cookie") is not None
         while True:
-            hop_headers = headers
+            if url_policy is not None and not url_policy(current_url):
+                raise URLPolicyError("url_policy rejected %s" % current_url)
+            hop_headers = base_headers
             if cookie_jar is not None and not explicit_cookie:
                 # Fresh cookies (including ones set on an earlier hop) are
                 # replayed on every hop of this request.
@@ -950,17 +1062,26 @@ class _Transport:
                     pass
             location = response.headers.get("Location")
             if not allow_redirects or response.status_code not in _REDIRECT_STATUSES or not location:
+                response.history = history
                 return response
             if redirects >= max_redirects:
                 raise TransportError("too many redirects (maximum %s)" % max_redirects)
             next_url = urljoin(current_url, location)
-            if urlsplit(next_url).hostname != urlsplit(current_url).hostname:
+            history.append(response)
+            if self._origin(next_url) != self._origin(current_url):
                 current_auth = None
+                base_headers = tuple(
+                    h for h in (base_headers or ())
+                    if h[0].lower() not in self._STRIP_ON_ORIGIN_CHANGE)
+                explicit_cookie = False
             if response.status_code == 303 or (
                     response.status_code in (301, 302) and current_method == "POST"):
                 current_method = "GET"
                 current_body = b""
                 current_content_type = None
+                base_headers = tuple(
+                    h for h in (base_headers or ())
+                    if h[0].lower() not in self._STRIP_ON_METHOD_REWRITE)
             current_url = next_url
             redirects += 1
 
@@ -1017,6 +1138,7 @@ class Response:
             self.text = raw.text
             self.content = raw.content
             self._cookies = dict(getattr(raw, "cookies", {}) or {})
+            self.history = [Response(raw=hop) for hop in getattr(raw, "history", ())]
         else:
             self.status = status
             self.url = url
@@ -1035,6 +1157,7 @@ class Response:
                 self.text = text or ""
                 self.content = self.text.encode("utf-8")
             self._cookies = {}
+            self.history = []
         self.meta = meta or {}
         self.elapsed = elapsed
         self.from_cache = from_cache
@@ -1087,7 +1210,29 @@ class Response:
         head = (self.text or "")[:6000].lower()
         if not head:
             return False
-        return any(marker in head for marker in _CHALLENGE_MARKERS)
+        if any(marker in head for marker in _CHALLENGE_MARKERS):
+            return True
+        if "requestsubmit" in head and ('name="solution"' in head
+                                        or "name='solution'" in head):
+            return "<p" not in head and "<article" not in head
+        return False
+
+    _BLOCK_REASONS = {403: "forbidden", 407: "proxy_auth_required",
+                      429: "rate_limited"}
+
+    @property
+    def block_reason(self):
+        """Why the fetch was turned away, or None.
+
+        ``rate_limited`` (429), ``proxy_auth_required`` (407), ``forbidden``
+        (403), or ``challenge`` when a 2xx body heuristically looks like an
+        interstitial instead of real content. Other statuses return None.
+        """
+        if self.status in self._BLOCK_REASONS:
+            return self._BLOCK_REASONS[self.status]
+        if self.looks_like_challenge:
+            return "challenge"
+        return None
 
     def raise_for_status(self):
         if not self.ok:
@@ -1095,7 +1240,8 @@ class Response:
         return self
 
     def urljoin(self, url):
-        return urljoin(self.url or "", url)
+        base = self.selector().base_url or self.url or ""
+        return urljoin(base, url)
 
     def follow(self, target, callback=None, **kw):
         from .spider import Request
@@ -1153,6 +1299,9 @@ class Response:
     def markdown(self, *args, **kwargs):
         return self.selector().markdown(*args, **kwargs)
 
+    def extract(self, fields, **kwargs):
+        return self.selector().extract(fields, **kwargs)
+
     def json(self):
         return _json.loads(self.text)
 
@@ -1179,13 +1328,22 @@ class Session:
     ``profile`` accepts a name from ``PROFILES`` or a custom ``Profile``.
     Supplying ``profiles`` creates a rotation pool; retries advance both the
     profile and proxy pools.  ``rotate`` may be ``"sequence"`` or ``"random"``.
+
+    ``sticky=True`` pins one profile and one proxy for the session's whole
+    life (picked at construction); sticky sessions never block-rotate.
+    ``url_policy`` is an optional callable invoked with every outgoing URL -
+    the initial request URL (params applied, cache lookups included) and
+    each redirect hop - before any socket is touched; it must return a
+    truthy value to allow the request, and a falsy one raises
+    :class:`URLPolicyError`. It is the seam used to confine a session to an
+    allowlisted set of origins.
     """
 
     def __init__(self, profile="chrome", headers=None, timeout=30, retries=2,
                  proxy=None, rotate=None, profiles=None, retry_policy=None,
                  cache=None, on_response=None, block_rotations=None, verify=True,
                  allow_redirects=True, max_redirects=10, impersonate=None,
-                 http2=False):
+                 http2=False, sticky=False, url_policy=None):
         if rotate not in (None, "sequence", "random"):
             raise ValueError("rotate must be None, 'sequence', or 'random'")
         if impersonate is not None:
@@ -1210,6 +1368,8 @@ class Session:
         self._headers = tuple(_header_items(headers))
         self.cookies = CookieJar()
         self.http2 = bool(http2)
+        self.sticky = bool(sticky)
+        self.url_policy = url_policy
         self._counter = 0
         self._counter_lock = threading.Lock()
         self._transport = _Transport(http2=http2)
@@ -1229,12 +1389,16 @@ class Session:
                                 else int(block_rotations))
         if self.block_rotations < 0:
             raise ValueError("block_rotations must be >= 0")
+        self._sticky_route = (self.profiles[0],
+                              self._proxy_pool[0] if self._proxy_pool else None)
 
     @property
     def retries(self):
         return self.retry_policy.retries
 
     def _route(self):
+        if self.sticky:
+            return self._sticky_route
         with self._counter_lock:
             counter = self._counter
             self._counter += 1
@@ -1251,7 +1415,8 @@ class Session:
         if "retries" in kwargs:
             policy = RetryPolicy(retries=kwargs.pop("retries"), backoff=policy.backoff,
                                  max_backoff=policy.max_backoff, statuses=policy.statuses,
-                                 respect_retry_after=policy.respect_retry_after)
+                                 respect_retry_after=policy.respect_retry_after,
+                                 allowed_methods=policy.allowed_methods)
         timeout = kwargs.pop("timeout", self.timeout)
         request_headers = kwargs.pop("headers", None)
         params = kwargs.pop("params", None)
@@ -1277,6 +1442,8 @@ class Session:
         body, content_type = _encode_body(data=data, json=json_data)
         combined_headers = tuple(_merge_headers(self._headers, request_headers))
         request_url = _url_with_params(url, params)
+        if self.url_policy is not None and not self.url_policy(request_url):
+            raise URLPolicyError("url_policy rejected %s" % request_url)
         if sink is not None:
             if not isinstance(sink, str):
                 raise TypeError("sink must be a file path string")
@@ -1305,6 +1472,7 @@ class Session:
 
         attempt = 0
         rotations = 0
+        method_allowed = policy.allows_method(method)
         while True:
             selected_profile, selected_proxy = self._route()
             if request_profile is not None:
@@ -1320,9 +1488,9 @@ class Session:
                     body=body, content_type=content_type, timeout=timeout,
                     proxy=selected_proxy, verify=verify, auth=auth,
                     allow_redirects=allow_redirects, max_redirects=max_redirects,
-                    cookie_jar=self.cookies, sink=sink)
+                    cookie_jar=self.cookies, sink=sink, url_policy=self.url_policy)
             except (TransportError, OSError, ssl.SSLError):
-                if attempt >= policy.retries:
+                if not method_allowed or attempt >= policy.retries:
                     raise
                 time.sleep(policy.delay(attempt))
                 attempt += 1
@@ -1338,11 +1506,13 @@ class Session:
                     self.on_response(cached)
                 return cached
             if (response.status in _IP_BLOCK_STATUSES and self._proxy_pool and
+                    not self.sticky and method_allowed and
                     request_proxy is None and rotations < self.block_rotations):
                 rotations += 1
                 time.sleep(min(policy.max_backoff, 0.3 * rotations))
                 continue
-            if policy.should_retry_status(response.status) and attempt < policy.retries:
+            if (method_allowed and policy.should_retry_status(response.status)
+                    and attempt < policy.retries):
                 time.sleep(policy.delay(attempt, response.headers.get("Retry-After")))
                 attempt += 1
                 continue
@@ -1425,5 +1595,6 @@ def download(url, path, **kwargs):
 
 __all__ = [
     "Session", "Response", "RetryPolicy", "HTTPStatusError", "TransportError",
-    "CookieJar", "detect_encoding", "get", "post", "fetch", "download",
+    "URLPolicyError", "CookieJar", "detect_encoding", "retry_after_seconds",
+    "get", "post", "fetch", "download",
 ]

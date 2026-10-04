@@ -71,3 +71,45 @@ def test_get_default_markdown_returns_zero(local_url, capsys):
 def test_get_css(local_url, capsys):
     assert cli.main(["get", local_url, "--css", "h1::text"]) == 0
     assert capsys.readouterr().out.strip() == "Hello reap"
+
+
+def test_worker_never_prints_redis_url_or_password(monkeypatch, capsys):
+    secret = "s3cr3t-p%40ss"
+    monkeypatch.setenv("REAP_API_KEY", "k")
+    monkeypatch.setenv("REAP_ALLOWED_ORIGINS", "http://127.0.0.1:8000")
+    monkeypatch.setenv("REAP_REDIS_URL",
+                       "redis://:s3cr3t-p%%40ss@127.0.0.1:1/0")
+    from curl_reap.jobs import Worker
+    monkeypatch.setattr(Worker, "serve_forever", lambda self, **kw: None)
+    rc = cli._cmd_worker(type("A", (), {})())
+    assert rc == 0
+    out = capsys.readouterr()
+    assert secret not in out.err and secret not in out.out
+    assert "redis://" not in out.err
+    assert "draining" in out.err
+
+
+def test_worker_bad_redis_url_is_sanitized(monkeypatch, capsys):
+    monkeypatch.setenv("REAP_API_KEY", "k")
+    monkeypatch.setenv("REAP_ALLOWED_ORIGINS", "http://127.0.0.1:8000")
+    monkeypatch.setenv("REAP_REDIS_URL", "bogus://:s3cr3t@nowhere")
+    assert cli._cmd_worker(type("A", (), {})()) == 2
+    err = capsys.readouterr().err
+    assert "s3cr3t" not in err
+    assert "bogus://" not in err
+    assert "REAP_REDIS_URL" in err
+
+
+def test_service_commands_require_api_key(monkeypatch, capsys):
+    monkeypatch.delenv("REAP_API_KEY", raising=False)
+    monkeypatch.delenv("REAP_ALLOWED_ORIGINS", raising=False)
+    assert cli._cmd_worker(type("A", (), {})()) == 2
+    assert "REAP_API_KEY" in capsys.readouterr().err
+
+
+def test_service_subcommands_registered():
+    parser = cli.build_parser()
+    args = parser.parse_args(["serve", "--host", "127.0.0.1",
+                              "--port", "8123"])
+    assert args.host == "127.0.0.1" and args.port == 8123
+    assert parser.parse_args(["worker"]).func is not None

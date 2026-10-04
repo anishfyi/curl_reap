@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 
 class Request:
@@ -25,11 +26,18 @@ class Request:
         self.kw = kw
 
     def fingerprint(self):
-        body = self.kw.get("data") or self.kw.get("json") or self.kw.get("params")
-        if body is None:
-            return f"{self.method}:{self.url}"
-        blob = json.dumps(body, sort_keys=True, default=str)
-        return f"{self.method}:{self.url}:{hashlib.sha1(blob.encode()).hexdigest()[:12]}"
+        data = self.kw.get("data")
+        body = self.kw.get("json")
+        params = self.kw.get("params")
+        parts = urlsplit(self.url)
+        url = urlunsplit((parts.scheme, parts.netloc, parts.path,
+                          parts.query, ""))
+        base = "%s:%s" % (self.method.upper(), url)
+        if data is None and body is None and params is None:
+            return base
+        blob = json.dumps({"data": data, "json": body, "params": params},
+                          sort_keys=True, default=str)
+        return "%s:%s" % (base, hashlib.sha1(blob.encode()).hexdigest()[:12])
 
     def __repr__(self):
         return f"<Request {self.method} {self.url}>"
