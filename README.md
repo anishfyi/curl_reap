@@ -53,14 +53,14 @@ print(page.jsonld())
 <p align="center"><strong>Primary sponsor</strong></p>
 
 <p align="center">
-  <a href="https://go.nodemaven.com/curlreapGH" title="NodeMaven: best proxy for web scraping and automation">
+  <a href="https://go.nodemaven.com/curlreapreadmeoct" title="NodeMaven: best proxy for web scraping and automation">
     <img src="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/sponsors/nodemaven-banner.jpg" alt="NodeMaven: best proxy for web scraping and automation with the highest quality IP" width="720">
   </a>
 </p>
 
-**[NodeMaven](https://go.nodemaven.com/curlreapGH)**: the most efficient proxy provider for web scraping and automation, with the highest quality IPs on the market.
+**[NodeMaven](https://go.nodemaven.com/curlreapreadmeoct)**: the most efficient proxy provider for web scraping and automation, with the highest quality IPs on the market.
 
-Why [NodeMaven](https://go.nodemaven.com/curlreapGH)?
+Why [NodeMaven](https://go.nodemaven.com/curlreapreadmeoct)?
 
 - ZIP targeting
 - 99.9% uptime
