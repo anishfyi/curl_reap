@@ -135,13 +135,25 @@ def _pick(sequence, counter, mode):
     return sequence[counter % len(sequence)]
 
 
+_env_proxy_cache = None
+
+
 def _proxy_from_env(scheme):
-    for variable in ("%s_proxy" % scheme.upper(), "%s_proxy" % scheme,
-                     "ALL_PROXY", "all_proxy"):
-        value = os.environ.get(variable)
-        if value:
-            return value
-    return None
+    global _env_proxy_cache
+    if _env_proxy_cache is None:
+        found = {}
+        for key, variables in (("https", ("HTTPS_PROXY", "https_proxy")),
+                               ("http", ("HTTP_PROXY", "http_proxy")),
+                               ("all", ("ALL_PROXY", "all_proxy"))):
+            for variable in variables:
+                value = os.environ.get(variable)
+                if value:
+                    found[key] = value
+                    break
+        _env_proxy_cache = found
+    if scheme in _env_proxy_cache:
+        return _env_proxy_cache[scheme]
+    return _env_proxy_cache.get("all")
 
 
 def _no_proxy_matches(url):

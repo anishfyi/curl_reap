@@ -1050,11 +1050,12 @@ class _Transport:
                     cookie_specs.append(spec)
 
         infos = dict(getattr(conn, "tls_infos", {}) or {})
-        try:
-            infos.setdefault("peername", conn.sock.getpeername())
-            infos.setdefault("sockname", conn.sock.getsockname())
-        except OSError:
-            pass
+        if "peername" not in infos:
+            try:
+                infos["peername"] = conn.sock.getpeername()
+                infos["sockname"] = conn.sock.getsockname()
+            except OSError:
+                pass
 
         def build(content=b"", saved=0, trailers=(), body_stream=None):
             raw = _RawResponse(status, reason, version, url, headers, content,
@@ -1301,9 +1302,13 @@ class _Transport:
                 for name, value in headers:
                     logger.info(">%s: %s", name, value)
             if conn.h2 is not None:
-                return self._h2_exchange(conn, method, scheme, host, port, authority,
-                                         parts, headers, body, sink, max_body, deadline,
-                                         debug)
+                try:
+                    return self._h2_exchange(conn, method, scheme, host, port, authority,
+                                             parts, headers, body, sink, max_body, deadline,
+                                             debug)
+                finally:
+                    # alive h2 connections return to the pool; dead ones GOAWAY-closed
+                    self._release(conn, conn.h2 is not None and conn.h2.alive)
             self._arm(conn.sock, read_timeout, deadline)
             request_line = "%s %s HTTP/1.1\r\n" % (method.upper(), target)
             rendered = [request_line.encode("ascii")]

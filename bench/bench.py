@@ -115,19 +115,39 @@ ROUTES = {
 # ---------------------------------------------------------------------------
 
 def make_cert(directory):
-    """Self-signed ECDSA P-256 CA cert for localhost / 127.0.0.1."""
+    """Proper localhost PKI: a CA and a leaf it signed (strict RFC 5280 shapes)."""
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import NameOID
+    from cryptography.x509.oid import NameOID, ExtensionOID
 
-    key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
     now = datetime.datetime.now(datetime.timezone.utc)
-    cert = (
+
+    def name(cn):
+        return x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
+
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    ca = (
         x509.CertificateBuilder()
-        .subject_name(name).issuer_name(name)
-        .public_key(key.public_key())
+        .subject_name(name("reap bench ca")).issuer_name(name("reap bench ca"))
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=7))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(x509.KeyUsage(
+            digital_signature=True, key_encipherment=False, key_cert_sign=True,
+            content_commitment=False, data_encipherment=False, key_agreement=False,
+            crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()),
+                       critical=False)
+        .sign(ca_key, hashes.SHA256())
+    )
+    leaf_key = ec.generate_private_key(ec.SECP256R1())
+    leaf = (
+        x509.CertificateBuilder()
+        .subject_name(name("localhost")).issuer_name(ca.subject)
+        .public_key(leaf_key.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(now - datetime.timedelta(days=1))
         .not_valid_after(now + datetime.timedelta(days=7))
@@ -135,22 +155,30 @@ def make_cert(directory):
             x509.DNSName("localhost"),
             x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
         ]), critical=False)
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(x509.KeyUsage(
-            digital_signature=True, key_encipherment=False, key_cert_sign=True,
+            digital_signature=True, key_encipherment=False, key_cert_sign=False,
             content_commitment=False, data_encipherment=False, key_agreement=False,
-            crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
-        .sign(key, hashes.SHA256())
+            crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key()),
+                       critical=False)
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(
+            ca_key.public_key()), critical=False)
+        .sign(ca_key, hashes.SHA256())
     )
+    ca_path = os.path.join(directory, "ca.pem")
     cert_path = os.path.join(directory, "cert.pem")
     key_path = os.path.join(directory, "key.pem")
+    with open(ca_path, "wb") as fh:
+        fh.write(ca.public_bytes(serialization.Encoding.PEM))
     with open(cert_path, "wb") as fh:
-        fh.write(cert.public_bytes(serialization.Encoding.PEM))
+        fh.write(leaf.public_bytes(serialization.Encoding.PEM))
     with open(key_path, "wb") as fh:
-        fh.write(key.private_bytes(serialization.Encoding.PEM,
-                                   serialization.PrivateFormat.PKCS8,
-                                   serialization.NoEncryption()))
-    return cert_path, key_path
+        fh.write(leaf_key.private_bytes(serialization.Encoding.PEM,
+                                        serialization.PrivateFormat.PKCS8,
+                                        serialization.NoEncryption()))
+    # the leaf is served; the CA is what clients verify against
+    return ca_path, (cert_path, key_path)
 
 
 def server_tls_context(cert_path, key_path, alpn, tickets=True):
@@ -793,8 +821,8 @@ def main(argv=None):
                 spec["per_thread"] = max(5, spec["per_thread"] // 10)
 
     tmpdir = tempfile.mkdtemp(prefix="curl_reap_bench_")
-    cert_path, key_path = make_cert(tmpdir)
-    verify = False if args.insecure else cert_path
+    ca_path, (cert_path, key_path) = make_cert(tmpdir)
+    verify = False if args.insecure else ca_path
     tickets = not args.no_tls_tickets
 
     servers = {
