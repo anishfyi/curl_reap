@@ -17,9 +17,48 @@ import sys
 
 def _fetch(url, profile, rotate, impersonate=None, http2=False):
     from .http import Session
-    s = Session(profile=profile, rotate=rotate, impersonate=impersonate,
-                http2=http2)
+    # HTTP/2 is negotiated by default now; the legacy --http2 flag is a no-op
+    s = Session(profile=profile, rotate=rotate, impersonate=impersonate)
     return s.get(url)
+
+
+def _cmd_doctor(args):
+    """Fetch a fingerprint echo service and compare against the captures."""
+    from .fingerprint import EXPECTED, check
+    if args.list:
+        for name in sorted(EXPECTED):
+            print(name)
+        return 0
+    try:
+        report = check(target=args.target, url=args.url)
+    except Exception as exc:
+        print("[reap] doctor could not reach %s: %s" % (args.url, exc),
+              file=sys.stderr)
+        return 2
+    print("target      %s" % report["target"])
+    print("url         %s" % args.url)
+    print("http        %s" % report.get("http_version"))
+    print("ja3         %s" % (report.get("ja3") or "-"))
+    print("ja4         %s" % report.get("ja4"))
+    print("peetprint   %s" % (report.get("peetprint") or "-"))
+    print("akamai h2   %s" % (report.get("akamai") or "-"))
+    print("")
+    ok = True
+    for name, matched in sorted((report.get("matches") or {}).items()):
+        if name == "headers":
+            continue
+        print("  %-12s %s" % (name, "MATCH" if matched else "DIFFERS"))
+        ok = ok and matched
+    headers = (report.get("matches") or {}).get("headers")
+    if headers is not None:
+        print("  %-12s %s" % ("headers", "MATCH" if headers else "DIFFERS"))
+        ok = ok and headers
+    if not ok:
+        print("\n[reap] fingerprint differs from the captured bytes; "
+              "expected values:", file=sys.stderr)
+        for key, value in sorted((report.get("expected") or {}).items()):
+            print("  %-12s %s" % (key, value), file=sys.stderr)
+    return 0 if ok else 1
 
 
 def _cmd_get(args):
@@ -239,6 +278,17 @@ def build_parser():
     w = sub.add_parser("worker", help="run one distributed job worker "
                                       "(server extra; same env as serve)")
     w.set_defaults(func=_cmd_worker)
+
+    d = sub.add_parser("doctor",
+                       help="verify this machine's wire fingerprint against "
+                            "the captured browser values")
+    d.add_argument("target", nargs="?", default="chrome",
+                   help="impersonate target to verify (default chrome)")
+    d.add_argument("--url", default="https://tls.peet.ws/api/all",
+                   help="fingerprint echo service")
+    d.add_argument("--list", action="store_true",
+                   help="list every known target and exit")
+    d.set_defaults(func=_cmd_doctor)
     return p
 
 

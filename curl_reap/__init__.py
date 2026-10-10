@@ -57,6 +57,7 @@ from .http import (
     post,
 )
 from .tls import FINGERPRINTS, PROFILES, Profile
+from .websocket import AsyncWebSocket, WebSocket
 from .parser import Selector, SelectorList
 from .pipelines import (
     CsvPipeline,
@@ -69,7 +70,7 @@ from .render import BrowserSession, render, render_if_empty
 from .spider import Request, SitemapSpider, Spider
 from .throttle import AutoThrottle
 
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 
 __all__ = [
     # transport
@@ -80,6 +81,7 @@ __all__ = [
     "DiskCache",
     "detect_encoding",
     "AsyncSession", "aget", "apost",
+    "WebSocket", "AsyncWebSocket",
     # rendering (optional playwright extra)
     "render", "render_if_empty", "BrowserSession",
     # parsing

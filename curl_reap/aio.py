@@ -1,10 +1,11 @@
-"""Async facade for the standard-library transport.
+"""Async facade over the thread-safe synchronous transport.
 
-The socket engine is synchronous, so this module runs each request with
-``asyncio.to_thread``.  That keeps one implementation of byte serialization,
-TLS profiles, connection pooling, retries, and decoding.  Cancellation stops
-waiting for the worker but cannot interrupt a socket call already running in
-its thread; the configured request timeout still bounds that work.
+The socket engine is synchronous, so this module runs each request through
+``asyncio.to_thread`` under an optional ``max_clients`` semaphore. One
+implementation of byte serialization, TLS profiles, connection pooling,
+retries and decoding keeps both worlds identical; cancellation stops
+waiting for the worker but cannot interrupt a socket call already running
+in its thread - the configured request timeout still bounds that work.
 """
 from __future__ import annotations
 
@@ -14,13 +15,19 @@ from .http import Session
 
 
 class AsyncSession:
-    """Awaitable wrapper around a thread-safe :class:`curl_reap.Session`."""
+    """Awaitable wrapper around a :class:`curl_reap.Session`.
+
+    ``max_clients`` (default 10) bounds concurrent in-flight requests with
+    a semaphore, like a thread pool.  ``ws_connect`` returns an
+    :class:`curl_reap.websocket.AsyncWebSocket`.
+    """
 
     def __init__(self, profile="chrome", headers=None, timeout=30, retries=2,
                  proxy=None, rotate=None, profiles=None, retry_policy=None,
                  cache=None, on_response=None, block_rotations=None, verify=True,
-                 allow_redirects=True, max_redirects=10, impersonate=None,
-                 http2=False, sticky=False, url_policy=None):
+                 allow_redirects=True, max_redirects=30, impersonate=None,
+                 http2=True, sticky=False, url_policy=None, max_clients=10,
+                 tls="auto", **kwargs):
         self._session = Session(
             profile=profile, headers=headers, timeout=timeout, retries=retries,
             proxy=proxy, rotate=rotate, profiles=profiles,
@@ -28,7 +35,9 @@ class AsyncSession:
             block_rotations=block_rotations, verify=verify,
             allow_redirects=allow_redirects, max_redirects=max_redirects,
             impersonate=impersonate, http2=http2, sticky=sticky,
-            url_policy=url_policy)
+            url_policy=url_policy, tls=tls, **kwargs)
+        self.max_clients = int(max_clients) if max_clients else None
+        self._semaphore = asyncio.Semaphore(self.max_clients) if self.max_clients else None
 
     @property
     def profile(self):
@@ -43,7 +52,12 @@ class AsyncSession:
         return self._session.cookies
 
     async def request(self, method, url, **kwargs):
-        return await asyncio.to_thread(self._session.request, method, url, **kwargs)
+        async def run():
+            return await asyncio.to_thread(self._session.request, method, url, **kwargs)
+        if self._semaphore is None:
+            return await run()
+        async with self._semaphore:
+            return await run()
 
     async def get(self, url, **kwargs):
         return await self.request("GET", url, **kwargs)
@@ -54,10 +68,27 @@ class AsyncSession:
     async def head(self, url, **kwargs):
         return await self.request("HEAD", url, **kwargs)
 
+    async def put(self, url, **kwargs):
+        return await self.request("PUT", url, **kwargs)
+
+    async def patch(self, url, **kwargs):
+        return await self.request("PATCH", url, **kwargs)
+
+    async def delete(self, url, **kwargs):
+        return await self.request("DELETE", url, **kwargs)
+
+    async def options(self, url, **kwargs):
+        return await self.request("OPTIONS", url, **kwargs)
+
     async def download(self, url, path, **kwargs):
         """Stream a URL straight to ``path`` off the event loop's thread."""
         kwargs.setdefault("timeout", self._session.timeout)
         return await asyncio.to_thread(self._session.download, url, path, **kwargs)
+
+    async def ws_connect(self, url, **kwargs):
+        """Open a WebSocket; returns a coroutine-compatible AsyncWebSocket."""
+        from .websocket import AsyncWebSocket
+        return await AsyncWebSocket.connect(url, session=self._session, **kwargs)
 
     async def close(self):
         await asyncio.to_thread(self._session.close)

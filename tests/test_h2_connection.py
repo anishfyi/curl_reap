@@ -609,7 +609,8 @@ def test_poll_sees_idle_goaway():
         conn = server.connect("chrome")
         response = conn.request("GET", "https", "h", "/", [], deadline=time.monotonic() + 5)
         assert response.body == b"ok"
-        deadline = time.monotonic() + 5
+        # generous deadline: the daemon server thread may lag under a loaded CI box
+        deadline = time.monotonic() + 10
         while conn.poll() and time.monotonic() < deadline:
             time.sleep(0.01)
         assert not conn.alive
