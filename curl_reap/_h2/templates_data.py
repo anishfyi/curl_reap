@@ -14,7 +14,7 @@ dynamic_table_size_updates and headers ([name, value] as captured).
 
 CAPTURE_INFO = {
     'captured_at': '2026-10-10 18:31 UTC',
-    'curl_cffi_version': '0.16.3',
+    'client_version': '0.16.3',
     'curl_version': 'libcurl/8.21.0-IMPERSONATE BoringSSL zlib/1.3.1 brotli/1.2.0 zstd/1.5.7 AppleIDN nghttp2/1.63.0 ngtcp2/1.20.0 nghttp3/1.15.0',
     'targets': ['chrome', 'chrome100', 'chrome101', 'chrome104', 'chrome107', 'chrome110', 'chrome116', 'chrome119', 'chrome120', 'chrome123', 'chrome124', 'chrome131', 'chrome131_android', 'chrome133a', 'chrome136', 'chrome142', 'chrome145', 'chrome146', 'chrome150', 'chrome99', 'chrome99_android', 'chrome_android', 'edge', 'edge101', 'edge99', 'firefox', 'firefox133', 'firefox135', 'firefox144', 'firefox147', 'safari', 'safari153', 'safari155', 'safari15_3', 'safari15_5', 'safari170', 'safari172_ios', 'safari17_0', 'safari17_2_ios', 'safari180', 'safari180_ios', 'safari184', 'safari184_ios', 'safari18_0', 'safari18_0_ios', 'safari260', 'safari2601', 'safari260_ios', 'safari_beta', 'safari_ios', 'safari_ios_beta', 'tor', 'tor145'],
 }

@@ -1,7 +1,7 @@
 """curl_reap's own HTTP/2 client.
 
 The package reproduces, frame for frame and HPACK byte for HPACK byte, what
-curl_cffi (libcurl with nghttp2) sends for each impersonation target, from
+the reference browser-impersonation client (libcurl with nghttp2) sends for each impersonation target, from
 the captures in ``tools/h2_templates``:
 
 * :func:`spec` / :class:`H2Spec`: a browser's SETTINGS, WINDOW_UPDATE,

@@ -77,7 +77,7 @@ def reduce_template(doc: Dict[str, Any]) -> Dict[str, Any]:
         "target": doc["target"],
         "alias_of": doc.get("alias_of"),
         "family": family_of(doc["target"]),
-        "source": doc.get("source"),
+        "source": (doc.get("source") or "").replace("curl_cffi", "the reference client"),
         "captured_at": doc.get("captured_at"),
         "record_version": doc["record_version"],
         "legacy_version": doc["legacy_version"],
