@@ -132,7 +132,12 @@ def echo_once_then_close(tls):
     data = tls.recv(100)
     tls.sendall(b"echo:" + data)
     info = {"reused": tls.session_reused}
-    tls.unwrap()
+    try:
+        tls.unwrap()
+    except (ssl.SSLError, OSError):
+        # the client may close the TCP socket right after its close_notify;
+        # OpenSSL versions surface that race differently and it is clean either way
+        pass
     return info
 
 
