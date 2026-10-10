@@ -2,7 +2,7 @@
 
 :class:`Headers` is the one header type curl_reap uses for requests,
 responses, trailers and session defaults.  It behaves like
-``curl_cffi.requests.Headers`` (itself the httpx multi-dict): duplicate
+``the reference client.requests.Headers`` (itself the httpx multi-dict): duplicate
 names are kept in order and retrievable with :meth:`Headers.get_list`,
 ``headers[name]`` joins duplicates with ``", "``, assignment replaces every
 occurrence, and every lookup is case-insensitive through a lowercase index,

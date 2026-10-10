@@ -26,13 +26,13 @@ Boundaries follow the browser family (see :func:`boundary_for`):
   Source: Blink ``FormDataEncoder::GenerateUniqueBoundaryString`` and the
   identical WebKit ``FormDataBuilder::generateUniqueBoundaryString`` (the
   prefix is 22 characters, then four 32-bit random words are mapped through
-  a 64-entry alphanumeric table).  curl_cffi 0.16.3 sends the prefix with
+  a 64-entry alphanumeric table).  the reference browser-impersonation client sends the prefix with
   six leading dashes instead of four; that is a curl-impersonate artefact
   and curl_reap follows the browsers.
 * ``firefox`` (Gecko, Firefox 111 and later): ``----geckoformboundary``
   followed by 32 lowercase hexadecimal digits (a UUID without separators).
   Source: Gecko ``FSMultipartFormData`` in ``dom/html/HTMLFormSubmission.cpp``
-  and curl_cffi 0.16.3's firefox fingerprint, which emits
+  and the reference browser-impersonation client's firefox fingerprint, which emits
   ``------geckoformboundary`` plus 32 hex digits (again with two extra
   dashes).  The older Gecko shape, 27 dashes followed by random digits, is
   available as ``firefox_legacy`` for targets older than Firefox 111.
@@ -314,11 +314,11 @@ def _validate_boundary(boundary: Union[str, bytes, None]) -> bytes:
 
 
 class Multipart(object):
-    """A multipart/form-data body builder compatible with curl_cffi's ``CurlMime``.
+    """A multipart/form-data body builder compatible with the reference client's ``CurlMime``.
 
     Parts are rendered in the order they were added.  ``family`` picks the
     boundary shape used when :meth:`to_body` is called without a boundary.
-    ``close()`` exists for curl_cffi parity and does nothing; a ``local_path``
+    ``close()`` exists for the reference client parity and does nothing; a ``local_path``
     part is opened and read only while the body is rendered.
     """
 
@@ -404,7 +404,7 @@ class Multipart(object):
         return bytes(out), "multipart/form-data; boundary=" + raw.decode("ascii")
 
     def close(self) -> None:
-        """No-op kept for curl_cffi parity (nothing is held open between renders)."""
+        """No-op kept for the reference client parity (nothing is held open between renders)."""
 
     def attach(self, curl=None) -> None:
         raise NotImplementedError(

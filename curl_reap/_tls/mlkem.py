@@ -829,7 +829,7 @@ def x25519mlkem768_server_respond(client_share: bytes, x25519_private=None) -> t
 # 8. Kyber768 round 3 (draft-tls-westerbaan-xyber768d00) on the same K-PKE
 # ----------------------------------------------------------------------------
 #
-# Chrome 124 (curl_cffi's chrome124 target) still offers X25519Kyber768Draft00
+# Chrome 124 (the reference client's chrome124 target) still offers X25519Kyber768Draft00
 # (group 0x6399). Kyber round 3 and FIPS 203 share K-PKE, the encapsulation key
 # layout (t || rho) and the decapsulation key layout (s || ek || H(ek) || z);
 # they differ only in how the shared secret is derived: Kyber hashes the

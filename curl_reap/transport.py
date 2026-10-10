@@ -922,7 +922,7 @@ class _Transport:
         from .tls import create_ssl_context
         context = create_ssl_context(profile, verify=verify, alpn=alpn)
         if cert:
-            # curl_cffi style: a path, or (cert, key[, key_password]).
+            # the reference client style: a path, or (cert, key[, key_password]).
             if isinstance(cert, str):
                 cert, key, password = cert, None, None
             else:

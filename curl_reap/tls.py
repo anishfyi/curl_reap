@@ -8,11 +8,11 @@ pseudo-header order) and the small set of ``ssl.SSLContext`` knobs used when
 the native engine is unavailable.
 
 The registry data lives in the generated module :mod:`curl_reap._profiles_data`
-(``tools/gen_profiles.py`` builds it from the curl_cffi captures under
+(``tools/gen_profiles.py`` builds it from the the reference client captures under
 ``tools/h2_templates`` and ``tools/hello_templates``).  Every target name
-curl_cffi 0.16.3 accepts resolves here to the same concrete target, and its
-header sets are the ones curl_cffi sends for that target.  curl_reap 1.x
-names that curl_cffi never had (``chrome98``, ``edge131``, ``firefox127``,
+the reference browser-impersonation client accepts resolves here to the same concrete target, and its
+header sets are the ones the reference client sends for that target.  curl_reap 1.x
+names that the reference client never had (``chrome98``, ``edge131``, ``firefox127``,
 ``safari16_0`` and so on) are kept as approximations: they borrow the nearest
 captured target and only substitute their own version number into the
 User-Agent and ``sec-ch-ua`` values.
@@ -20,7 +20,7 @@ User-Agent and ``sec-ch-ua`` values.
 Honesty section.  With the native engine the bytes on the wire reproduce the
 captured ClientHello (cipher order, extension set and order, GREASE, key
 shares including the post-quantum hybrid, ALPS, ECH GREASE, padding rule),
-measured as the same JA4 and peetprint as curl_cffi.  :func:`create_ssl_context`
+measured as the same JA4 and peetprint as the reference client.  :func:`create_ssl_context`
 remains the best-effort fallback on the standard library ``ssl`` module: it
 can set the pre-TLS-1.3 cipher order, the minimum version, an ECDH curve
 hint and ALPN, and nothing else.  The transport reports which path a
@@ -51,7 +51,7 @@ _FORM_BOUNDARY = {"chrome": "chrome", "edge": "edge", "safari": "safari",
 class UnknownProfileError(ImpersonateError, ValueError):
     """An impersonate target or profile name the registry does not know.
 
-    It is an :class:`~curl_reap.exceptions.ImpersonateError` (curl_cffi's
+    It is an :class:`~curl_reap.exceptions.ImpersonateError` (the reference client's
     name for the same situation) and a ``ValueError`` (what curl_reap 1.x
     raised), so both ``except`` clauses keep working.
     """
@@ -218,13 +218,13 @@ def _build_registry() -> Tuple[Dict[str, Profile], Dict[str, str], Dict[str, str
 
 
 FINGERPRINTS: Dict[str, Profile]
-#: alias name -> concrete target (curl_cffi's map plus deprecated spellings).
+#: alias name -> concrete target (the reference client's map plus deprecated spellings).
 ALIASES: Dict[str, str]
 #: curl_reap 1.x name -> the captured target it approximates.
 LEGACY: Dict[str, str]
 FINGERPRINTS, ALIASES, LEGACY = _build_registry()
 
-#: Concrete targets in registry order: the names curl_cffi ships natively.
+#: Concrete targets in registry order: the names the reference client ships natively.
 TARGETS: Tuple[str, ...] = tuple(_data.CONCRETE)
 
 #: Canonical short names, kept separate so ``PROFILES`` stays small.
@@ -278,7 +278,7 @@ def _unknown(name: Any) -> UnknownProfileError:
 
 
 # ---------------------------------------------------------------------------
-# curl_cffi style fingerprint specs
+# the reference client style fingerprint specs
 # ---------------------------------------------------------------------------
 
 _FP_CLIENT_FAMILY = {"chrome": "chrome", "chromium": "chrome", "edge": "edge",
@@ -313,12 +313,12 @@ def _version_number(text: str) -> Optional[float]:
 
 
 def _profile_from_fingerprint(spec: Any) -> Profile:
-    """Map a curl_cffi ``Fingerprint`` (or a dict shaped like one) to the nearest target."""
+    """Map a the reference client ``Fingerprint`` (or a dict shaped like one) to the nearest target."""
     client = _fp_field(spec, "client").lower()
     family = _FP_CLIENT_FAMILY.get(client)
     if family is None:
         raise ImpersonateError(
-            "no impersonate target for client %r; curl_reap knows %s (the curl_cffi "
+            "no impersonate target for client %r; curl_reap knows %s (the the reference client "
             "clients brave, opera, samsung, okhttp and the app web views have no "
             "captured fingerprint)" % (client or "", ", ".join(FAMILIES)))
     platform = _FP_PLATFORM.get(_fp_field(spec, "os").lower().replace(" ", ""))
@@ -352,7 +352,7 @@ def resolve_profile(profile: Union[str, Profile, Mapping[str, Any], Any]) -> Pro
     """Return a concrete :class:`Profile`.
 
     Accepts a registry name (case-insensitive, underscore and dot tolerant),
-    a :class:`Profile`, or a curl_cffi style fingerprint: a dict or object
+    a :class:`Profile`, or a the reference client style fingerprint: a dict or object
     with ``client``, ``client_version`` and ``os`` fields, mapped to the
     nearest captured target.  Unknown names raise
     :class:`UnknownProfileError` (an ``ImpersonateError`` and a ``ValueError``).
@@ -368,7 +368,7 @@ def resolve_profile(profile: Union[str, Profile, Mapping[str, Any], Any]) -> Pro
     if _looks_like_fingerprint(profile):
         return _profile_from_fingerprint(profile)
     raise TypeError("profile must be a profile name, impersonate target, "
-                    "curl_cffi style fingerprint or Profile instance")
+                    "the reference client style fingerprint or Profile instance")
 
 
 def profile_for_h2(profile: Union[str, Profile]) -> HeaderTuple:

@@ -2,7 +2,7 @@
 
 All of them are :class:`curl_reap.exceptions.TransportError` subclasses so
 the transport's existing ``except`` clauses keep working, and they carry the
-libcurl error code curl_cffi would report (35 for a TLS failure, 60 for a
+libcurl error code the reference client would report (35 for a TLS failure, 60 for a
 certificate verification failure, 28 for a timeout).
 """
 from __future__ import annotations
@@ -71,9 +71,9 @@ class CertificateError(CertificateVerifyError, TLSError):
 class UnsupportedGroupRequested(TLSError):
     """HelloRetryRequest asked for a group we advertised but cannot generate.
 
-    Firefox templates advertise ffdhe2048 and ffdhe3072 the way curl_cffi's
+    Firefox templates advertise ffdhe2048 and ffdhe3072 the way the reference client's
     BoringSSL does without being able to use them; a server that insists on
-    finite-field DH gets a handshake_failure, exactly as curl_cffi behaves.
+    finite-field DH gets a handshake_failure, exactly as the reference client behaves.
     """
 
     alert = AD_HANDSHAKE_FAILURE

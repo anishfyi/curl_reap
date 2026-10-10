@@ -286,7 +286,7 @@ class Session:
         if proxies:
             if isinstance(proxies, str):
                 proxies = {"all": proxies}
-            # curl_cffi key order: scheme-specific wins over 'all'
+            # the reference client key order: scheme-specific wins over 'all'
             for key in ("https", "http", "all://", "all"):
                 value = proxies.get(key)
                 if value and value not in pool:

@@ -1,7 +1,7 @@
 """Exception hierarchy for curl_reap.
 
-The names and numeric codes mirror ``curl_cffi.requests.exceptions`` so code
-written against curl_cffi keeps its ``except`` clauses, while every transport
+The names and numeric codes mirror ``the reference client.requests.exceptions`` so code
+written against the reference client keeps its ``except`` clauses, while every transport
 failure stays a :class:`TransportError` (the name curl_reap 1.x used) and an
 ``OSError``.  This module imports nothing from the package so the TLS and
 HTTP/2 engines can raise these without import cycles.
@@ -12,7 +12,7 @@ from enum import IntEnum
 
 
 class CurlECode(IntEnum):
-    """libcurl error numbers, kept so ``exc.code`` matches curl_cffi."""
+    """libcurl error numbers, kept so ``exc.code`` matches the reference client."""
 
     OK = 0
     UNSUPPORTED_PROTOCOL = 1
@@ -111,7 +111,7 @@ class TransportError(RequestException):
     """A connection, TLS, proxy or HTTP framing failure (the 1.x name)."""
 
 
-class ConnectionError(TransportError):  # noqa: A001 - mirrors curl_cffi
+class ConnectionError(TransportError):  # noqa: A001 - mirrors the reference client
     code = CurlECode.COULDNT_CONNECT
 
 
@@ -239,7 +239,7 @@ class WebSocketTimeout(WebSocketError, Timeout):
     code = CurlECode.OPERATION_TIMEDOUT
 
 
-#: Map a libcurl error number to the exception class curl_cffi would raise.
+#: Map a libcurl error number to the exception class the reference client would raise.
 CODE2ERROR = {
     CurlECode.OK: RequestException,
     CurlECode.UNSUPPORTED_PROTOCOL: InvalidSchema,

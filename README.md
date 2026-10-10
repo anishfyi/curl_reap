@@ -7,7 +7,7 @@
 
 # curl_reap
 
-**Reap the web.** One Python library for scraping: a hardened HTTP transport, self-healing selectors, structured extraction, and a concurrent crawl engine.
+**Reap the web.** One Python library for scraping: a browser-exact HTTP/TLS/HTTP-2 transport, self-healing selectors, structured extraction, and a concurrent crawl engine.
 
 [![CI](https://github.com/anishfyi/curl_reap/actions/workflows/ci.yml/badge.svg)](https://github.com/anishfyi/curl_reap/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/curl-reap)](https://pypi.org/project/curl-reap/)
@@ -15,23 +15,40 @@
 
 **Documentation: [velofy.co/curl_reap](https://velofy.co/curl_reap/)**
 
+## The wire is the fingerprint
+
+On the modern web, the bytes of your TLS handshake and HTTP/2 preface decide
+whether you get the page or a bot wall. curl_reap 2.0 reproduces a real
+browser's bytes exactly, from its own TLS 1.3 engine: cipher order, extension
+order and GREASE, post-quantum X25519MLKEM768 key shares, certificate
+compression, ALPS, ECH GREASE, padding - and per-browser HTTP/2 SETTINGS,
+priority and HPACK. Measured JA4, ja4_r, peetprint and Akamai h2 fingerprints
+match the captured browsers for all 53 targets. Prove it on your own machine:
+
+```bash
+reap doctor chrome     # or firefox147, safari2601, edge142, tor, ...
+```
+
 ## Install
 
 ```bash
 pip install curl_reap
 ```
 
-Python 3.9+. Two dependencies total: `lxml` and `cssselect`. No compiled curl binding, no downloads at runtime, pure standard-library transport.
+Python 3.9+. Dependencies: `lxml`, `cssselect`, `cryptography`, `hpack`,
+`brotli` - all shipping wheels for every platform, no compiled curl binding,
+no runtime downloads, and a readable pure-Python engine a maintainer can
+adapt the day a browser changes its hello.
 
-> **Release status:** the latest release is 1.1.0, on GitHub. PyPI still serves 0.2.2, which predates the 1.0 rewrite described here, until 1.1.0 is uploaded there. Until then, install 1.1.0 from the GitHub release:
-> `pip install "curl_reap @ https://github.com/anishfyi/curl_reap/releases/download/v1.1.0/curl_reap-1.1.0-py3-none-any.whl"`
-> or from the git tag: `pip install "curl_reap @ git+https://github.com/anishfyi/curl_reap@v1.1.0"`
+> **Release status:** 2.0.0 is the current release. Until the wheel is on
+> PyPI, install from the git branch:
+> `pip install "curl_reap @ git+https://github.com/anishfyi/curl_reap@feat/native-transport-2.0"`
 
 Optional extras when you want more:
 
 ```bash
-pip install "curl-reap[h2]"   # HTTP/2 via hyper-h2 (Session(http2=True) / reap --http2 get URL)
-pip install "curl-reap[js]"   # JavaScript rendering via Playwright (reap.render, BrowserSession)
+pip install "curl-reap[zstd]"    # zstd bodies + certificate compression
+pip install "curl-reap[js]"      # JavaScript rendering via Playwright (reap.render, BrowserSession)
 pip install "curl-reap[server]"  # private job API + worker (reap serve / reap worker)
 ```
 
@@ -41,10 +58,18 @@ pip install "curl-reap[server]"  # private job API + worker (reap serve / reap w
 import curl_reap as reap
 
 page = reap.get("https://quotes.toscrape.com", profile="chrome")
-# or curl_cffi-style versioned targets (38 of them, plus 4 aliases):
+# or versioned targets (79 names: 38 concrete captures, aliases, legacy):
 page = reap.get("https://quotes.toscrape.com", impersonate="chrome124")
 print(page.css("span.text::text").getall())
 print(page.jsonld())
+
+# HTTP/2 is negotiated by default; see what a connection used
+print(page.infos["tls_backend"], page.http_version, page.infos["cipher"])
+
+# WebSockets ride the same transport
+with reap.WebSocket.connect("wss://echo.example/socket") as ws:
+    ws.send("hello")
+    print(ws.recv())
 
 # structured extraction in one call
 print(page.extract({"quotes": "span.text::text",
@@ -93,30 +118,27 @@ Codes for curl_reap users: `CURLREAP35` for 35% off mobile and residential proxi
 
 ## Why curl_reap
 
-- **Get past the front door.** Stock Python clients are fingerprinted as bots in seconds. curl_reap ships its own HTTP/1.1 engine on `socket` + `ssl` with curated cipher orderings, ALPN, browser-family profiles (`chrome`, `firefox`, `safari`), and exact control over header order and casing. Rotation pools advance both profile and proxy across retries.
+- **Get past the front door.** Stock Python clients are fingerprinted as bots in seconds. curl_reap 2.0 ships its own TLS 1.3 engine and HTTP/2 framing that reproduce a real browser's handshake bytes exactly - cipher order, extension order and GREASE, post-quantum key shares, per-browser SETTINGS and HPACK - for 53 captured targets. Rotation pools advance both profile and proxy across retries.
 - **Survive markup changes.** Selectors heal themselves: when a site renames a class, `find_similar` and adaptive relocation re-find the element from a saved signature.
 - **Skip the parsing boilerplate.** One call gives you JSON-LD, meta tags, links, images, tables, and readable markdown.
-- **Crawl without wiring Scrapy-sized machinery.** Spiders, priorities, per-domain AutoThrottle, robots.txt with Crawl-delay, sitemap discovery, dedup, and jsonl/csv/sqlite pipelines behind one `reap.run()` call.
+- **Crawl without wiring framework-sized machinery.** Spiders, priorities, per-domain AutoThrottle, robots.txt with Crawl-delay, sitemap discovery, dedup, and jsonl/csv/sqlite pipelines behind one `reap.run()` call.
 - **Stay light.** No compiled curl fork, no runtime binary downloads, no framework lock-in. If you outgrow it, every piece is importable standalone.
 
-Honest limits: standard-library TLS cannot produce an exact browser ClientHello, so hard-blocked sites behind enterprise anti-bot may still distinguish it. curl_reap does not solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services. Respect robots.txt, terms, and the law: [LEGAL.md](LEGAL.md).
+Honest limits: servers that only speak TLS 1.2 fall back to an OpenSSL-shaped hello (the response says so in `infos["tls_backend"]`); HTTP/3 (QUIC) is not implemented. curl_reap does not solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services. Respect robots.txt, terms, and the law: [LEGAL.md](LEGAL.md).
 
-## How it compares
+## What's in one install
 
-What curl_reap puts in one install, and which of requests + bs4, httpx, curl_cffi, Scrapy and Scrapling also have it:
+- Browser-exact TLS 1.3 fingerprints (JA4/ja4_r/peetprint verified per target) with post-quantum key shares and PSK resumption
+- Byte-exact HTTP/2 SETTINGS/HPACK per target, on by default, plus ordered HTTP/1.1
+- WebSocket and async clients on the same transport
+- An lxml parser with self-healing selectors and one-call structured extraction (jsonld/meta/links/images/tables/markdown)
+- A concurrent crawl engine: priorities, AutoThrottle, robots.txt, dedup, jsonl/csv/sqlite pipelines
+- Fingerprint + proxy rotation, retries with `Retry-After`, disk cache with 304 revalidation, streaming downloads
+- `reap doctor` so you can verify every fingerprint claim on your own machine
 
-- **Browser-inspired TLS/header profiles:** curl_cffi; partial in Scrapling.
-- **Byte-level header order control:** curl_cffi.
-- **Parser built in (lxml):** Scrapy, Scrapling; requests + bs4 via bs4.
-- **Self-healing selectors:** Scrapling.
-- **Structured extraction (jsonld/meta/tables/markdown):** partial in Scrapy and Scrapling.
-- **Concurrent crawl engine:** Scrapy.
-- **AutoThrottle, retries, pipelines:** Scrapy; partial in httpx.
-- **Fingerprint + proxy rotation:** partial in httpx and curl_cffi.
-- **Async client:** httpx, curl_cffi; partial in Scrapling.
-- **Disk response cache with 304 revalidation:** partial in Scrapy.
-- **Zero heavy dependencies:** httpx.
-- **One install does everything:** partial in Scrapy and Scrapling.
+## Performance
+
+Local-loopback benchmark (Apple M3 Pro, Python 3.12; `bench/bench.py`, results in `bench/AFTER-2.0.md`), against a C-accelerated browser-impersonation client on the same machine: **1.3x** its throughput on HTTP/1.1 keep-alive, **1.8x** threaded, **1.2x** on TLS keep-alive, **1.2x** on 5 MB bodies (1.1.0 was 0.05x there), **0.75x** on HTTP/2 (with byte-exact framing), and **0.5x** on fresh TLS handshakes - the pure-Python engine costs about 1 ms per handshake, and PSK resumption takes over where servers accept tickets. The fingerprint table above is the point: bytes first, then speed.
 
 ## Hardened sessions and crawling
 
@@ -126,7 +148,7 @@ The transport keeps HTTP-level state correct so long crawls don't drift:
 - **Redirects** strip `Authorization`, explicit `Cookie`, `Proxy-Authorization` and `Host` whenever the origin (scheme + host + effective port) changes, so credentials cannot leak across hosts or an `https -> http` downgrade; `Response.history` exposes the redirect chain as Responses.
 - **`Session(url_policy=callable)`** is consulted before every outgoing URL - the initial request (params applied, cache lookups included) and each redirect hop - before a socket is touched. A falsy return raises `URLPolicyError`. This is the origin-confinement seam the private service uses; it is not a complete egress firewall (see below).
 - **`Session(sticky=True)`** pins one profile/proxy for the session's life; retries and 4xx signals never rotate a sticky route. `RetryPolicy(allowed_methods=...)` gates which methods replay - POST/PATCH are never retried unless you opt in - and `Retry-After` is honored verbatim rather than clamped to `max_backoff`.
-- **`Response.block_reason`** reports `rate_limited` (429), `proxy_auth_required` (407), `forbidden` (403), or `challenge` when the body heuristically looks like an interstitial. `render_if_empty` only renders successful hollow pages - it does not execute or retry challenge interstitials. JS rendering via `reap.render` / `BrowserSession` is for ordinary JavaScript-heavy pages on sites you are allowed to fetch; it is not a challenge bypass, and the stdlib transport does not claim a better TLS fingerprint than curl_cffi.
+- **`Response.block_reason`** reports `rate_limited` (429), `proxy_auth_required` (407), `forbidden` (403), or `challenge` when the body heuristically looks like an interstitial. `render_if_empty` only renders successful hollow pages - it does not execute or retry challenge interstitials. JS rendering via `reap.render` / `BrowserSession` is for ordinary JavaScript-heavy pages on sites you are allowed to fetch; it is not a challenge bypass.
 
 `BrowserSession` (optional `js` extra) keeps one browser/context/page alive across `goto()` calls so cookies and storage persist, reports the real navigation status and final URL (never a fabricated 200), optionally attaches to an authorized remote browser via `cdp_url`, and can route-gate document and subresource requests through the same `url_policy`.
 

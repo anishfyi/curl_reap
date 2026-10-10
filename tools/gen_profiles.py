@@ -8,7 +8,7 @@ list, SETTINGS and the Akamai string) and ``tools/capture_clienthello.py``
 is a plain Python module with three tables:
 
 ``CONCRETE``
-    One entry per captured curl_cffi target: family, version, platform, the
+    One entry per captured reference-client target: family, version, platform, the
     HTTP/1.1 header set exactly as curl_cffi sends it minus the libcurl
     artefacts (Host, Upgrade, HTTP2-Settings, Connection), the HTTP/2 header
     set exactly as curl_cffi sends it (lowercase, pseudo headers removed),
@@ -17,7 +17,7 @@ is a plain Python module with three tables:
 
 ``ALIASES``
     curl_cffi's alias map (``chrome`` -> ``chrome150`` and so on) plus the
-    deprecated spellings curl_cffi still accepts.  Aliases captured under
+    deprecated spellings the reference client still accepts.  Aliases captured under
     their own name are checked against the concrete target before the module
     is written, so an alias can never drift from its target.
 
@@ -485,8 +485,8 @@ def render_module(concrete: Dict[str, Dict[str, Any]], aliases: Dict[str, str],
     w("Source captures: %s.\n" % meta["source"])
     w("Captured between %s and %s.\n" % (meta["captured_min"], meta["captured_max"]))
     w("Generated on %s.\n\n" % meta["generated_at"])
-    w("CONCRETE holds one entry per target curl_cffi ships natively.  The header\n")
-    w("sets are exactly what curl_cffi sends for that target: ``h1_headers`` in\n")
+    w("CONCRETE holds one entry per target the reference client ships natively.  The header\n")
+    w("sets are exactly what the reference client sends for that target: ``h1_headers`` in\n")
     w("HTTP/1.1 order and spelling without the libcurl artefacts (Host, Upgrade,\n")
     w("HTTP2-Settings, Connection), ``h2_headers`` in HTTP/2 order with lowercase\n")
     w("names and without pseudo headers.  ``tls_template`` and ``h2_spec`` name\n")

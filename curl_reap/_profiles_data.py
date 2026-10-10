@@ -8,8 +8,8 @@ Source captures: curl_cffi 0.16.3, libcurl/8.21.0-IMPERSONATE BoringSSL zlib/1.3
 Captured between 2026-10-10 18:31 UTC and 2026-10-10 19:30 UTC.
 Generated on 2026-10-10.
 
-CONCRETE holds one entry per target curl_cffi ships natively.  The header
-sets are exactly what curl_cffi sends for that target: ``h1_headers`` in
+CONCRETE holds one entry per target the reference client ships natively.  The header
+sets are exactly what the reference client sends for that target: ``h1_headers`` in
 HTTP/1.1 order and spelling without the libcurl artefacts (Host, Upgrade,
 HTTP2-Settings, Connection), ``h2_headers`` in HTTP/2 order with lowercase
 names and without pseudo headers.  ``tls_template`` and ``h2_spec`` name
