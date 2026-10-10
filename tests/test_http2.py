@@ -163,7 +163,7 @@ def test_http2_round_trip_and_connection_reuse(h2_base):
         # same pooled connection serves the second stream
         r2 = s.get(base + "/second", impersonate="firefox133")
         assert r2.status == 200
-        assert "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0)" in r2.text
+        assert "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0)" in r2.text
 
 
 def test_cookie_set_over_h2_replays(h2_base):

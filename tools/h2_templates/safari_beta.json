@@ -1,0 +1,510 @@
+{
+  "target": "safari_beta",
+  "captured_at": "2026-10-10 19:30 UTC",
+  "curl_cffi_version": "0.16.3",
+  "curl_version": "libcurl/8.21.0-IMPERSONATE BoringSSL zlib/1.3.1 brotli/1.2.0 zstd/1.5.7 AppleIDN nghttp2/1.63.0 ngtcp2/1.20.0 nghttp3/1.15.0",
+  "runs": 2,
+  "stable_across_runs": true,
+  "unstable_fields": [],
+  "tls": {
+    "alpn": "h2",
+    "version": "TLSv1.3",
+    "cipher": "TLS_AES_256_GCM_SHA384",
+    "sni": null
+  },
+  "client_frames_before_response": [
+    "SETTINGS",
+    "WINDOW_UPDATE",
+    "HEADERS"
+  ],
+  "settings": [
+    {
+      "id": 2,
+      "name": "ENABLE_PUSH",
+      "value": 0
+    },
+    {
+      "id": 3,
+      "name": "MAX_CONCURRENT_STREAMS",
+      "value": 100
+    },
+    {
+      "id": 4,
+      "name": "INITIAL_WINDOW_SIZE",
+      "value": 2097152
+    },
+    {
+      "id": 9,
+      "name": "NO_RFC7540_PRIORITIES",
+      "value": 1
+    }
+  ],
+  "window_update": {
+    "stream_id": 0,
+    "increment": 10420225
+  },
+  "other_window_updates": [],
+  "priority_frames": [],
+  "headers_frame": {
+    "stream_id": 1,
+    "flags": 5,
+    "flag_names": [
+      "END_STREAM",
+      "END_HEADERS"
+    ],
+    "priority": null,
+    "padding_length": null,
+    "header_block_length": 266,
+    "header_block_hex": "8287418b089d5c0b8170dc704eb4f7048b6107a4ac5634cffe76803f408a4148b4a549275a42a13f8690e4b692d49f7adad07f66a281b0dae053fad0321aa49d13fda992a49685340c8a6adca7e28104416e277fb521aeba0bc8b1e63258700dae15c2da9fd66c7bf467fa5283752a988a4ea7fed4e25b1063d4c09c5c0b854dc39476198700dae15c2dff53b0497ca589d34d1f43aeba0c41a4c7a98f33a69a3fdf9a68fa1d75d0620d263d4c79a68fbed00177febe58f9fbed00177b408a4148b4a549275906497f83a8f517408a4148b4a549275a93c85f86a87dcd30d25f518b2d4b70ddf45abefb4005df4086aec31ec327d785b6007d286f508d9bd9abfa5242cb40d25fa523b3"
+  },
+  "hpack_dynamic_table_size_updates": [],
+  "headers": [
+    {
+      "name": ":method",
+      "value": "GET",
+      "representation": "indexed-static",
+      "index": 2
+    },
+    {
+      "name": ":scheme",
+      "value": "https",
+      "representation": "indexed-static",
+      "index": 7
+    },
+    {
+      "name": ":authority",
+      "value": "127.0.0.1:62748",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 1,
+      "value_huffman": true
+    },
+    {
+      "name": ":path",
+      "value": "/some/path?q=1",
+      "representation": "literal-without-indexing",
+      "name_source": "static-table",
+      "name_index": 4,
+      "value_huffman": true
+    },
+    {
+      "name": "sec-fetch-dest",
+      "value": "document",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": true
+    },
+    {
+      "name": "user-agent",
+      "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Safari/605.1.15",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 58,
+      "value_huffman": true
+    },
+    {
+      "name": "accept",
+      "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 19,
+      "value_huffman": true
+    },
+    {
+      "name": "sec-fetch-site",
+      "value": "none",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": true
+    },
+    {
+      "name": "sec-fetch-mode",
+      "value": "navigate",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": true
+    },
+    {
+      "name": "accept-language",
+      "value": "en-US,en;q=0.9",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 17,
+      "value_huffman": true
+    },
+    {
+      "name": "priority",
+      "value": "u=0, i",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": true
+    },
+    {
+      "name": "accept-encoding",
+      "value": "gzip, deflate, br",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 16,
+      "value_huffman": true
+    }
+  ],
+  "pseudo_header_order": [
+    "m",
+    "s",
+    "a",
+    "p"
+  ],
+  "regular_header_order": [
+    "sec-fetch-dest",
+    "user-agent",
+    "accept",
+    "sec-fetch-site",
+    "sec-fetch-mode",
+    "accept-language",
+    "priority",
+    "accept-encoding"
+  ],
+  "akamai_fingerprint": "2:0;3:100;4:2097152;9:1|10420225|0|m,s,a,p",
+  "post_response_client_frames": [
+    {
+      "type": "SETTINGS",
+      "length": 0,
+      "flags": 1,
+      "flag_names": [
+        "ACK"
+      ],
+      "stream_id": 0,
+      "settings": []
+    },
+    {
+      "type": "GOAWAY",
+      "length": 17,
+      "flags": 0,
+      "flag_names": [],
+      "stream_id": 0,
+      "last_stream_id": 0,
+      "error_code": 0,
+      "error_name": "NO_ERROR",
+      "debug_data": "shutdown\u0000"
+    }
+  ],
+  "connection_closed_by": "client-close-notify",
+  "client_result": {
+    "status": 200,
+    "http_version": 3,
+    "error": null,
+    "body": "ok"
+  },
+  "http11": {
+    "request_line": "GET /some/path?q=1 HTTP/1.1",
+    "headers": [
+      [
+        "Host",
+        "127.0.0.1:62749"
+      ],
+      [
+        "Upgrade",
+        "h2c"
+      ],
+      [
+        "HTTP2-Settings",
+        "AAIAAAAAAAMAAABkAAQAIAAAAAkAAAAB"
+      ],
+      [
+        "sec-fetch-dest",
+        "document"
+      ],
+      [
+        "user-agent",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Safari/605.1.15"
+      ],
+      [
+        "accept",
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      ],
+      [
+        "sec-fetch-site",
+        "none"
+      ],
+      [
+        "sec-fetch-mode",
+        "navigate"
+      ],
+      [
+        "accept-language",
+        "en-US,en;q=0.9"
+      ],
+      [
+        "accept-encoding",
+        "gzip, deflate, br"
+      ],
+      [
+        "Connection",
+        "Upgrade, HTTP2-Settings"
+      ]
+    ],
+    "header_order": [
+      "Host",
+      "Upgrade",
+      "HTTP2-Settings",
+      "sec-fetch-dest",
+      "user-agent",
+      "accept",
+      "sec-fetch-site",
+      "sec-fetch-mode",
+      "accept-language",
+      "accept-encoding",
+      "Connection"
+    ],
+    "upgrade_h2c": true,
+    "connection_header": "Upgrade, HTTP2-Settings",
+    "http2_settings_decoded": [
+      {
+        "id": 2,
+        "name": "ENABLE_PUSH",
+        "value": 0
+      },
+      {
+        "id": 3,
+        "name": "MAX_CONCURRENT_STREAMS",
+        "value": 100
+      },
+      {
+        "id": 4,
+        "name": "INITIAL_WINDOW_SIZE",
+        "value": 2097152
+      },
+      {
+        "id": 9,
+        "name": "NO_RFC7540_PRIORITIES",
+        "value": 1
+      }
+    ],
+    "stable_across_runs": true
+  },
+  "peet_ws": {
+    "akamai_fingerprint": null,
+    "akamai_matches_local": null,
+    "headers_frame_flags": null,
+    "ja3_hash": null,
+    "ja4": null,
+    "peetprint_hash": null,
+    "user_agent": null,
+    "error": null
+  },
+  "raw": {
+    "client_raw_hex": "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a000018040000000000000200000000000300000064000400200000000900000001000004080000000000009f000100010a0105000000018287418b089d5c0b8170dc704eb4f7048b6107a4ac5634cffe76803f408a4148b4a549275a42a13f8690e4b692d49f7adad07f66a281b0dae053fad0321aa49d13fda992a49685340c8a6adca7e28104416e277fb521aeba0bc8b1e63258700dae15c2da9fd66c7bf467fa5283752a988a4ea7fed4e25b1063d4c09c5c0b854dc39476198700dae15c2dff53b0497ca589d34d1f43aeba0c41a4c7a98f33a69a3fdf9a68fa1d75d0620d263d4c79a68fbed00177febe58f9fbed00177b408a4148b4a549275906497f83a8f517408a4148b4a549275a93c85f86a87dcd30d25f518b2d4b70ddf45abefb4005df4086aec31ec327d785b6007d286f508d9bd9abfa5242cb40d25fa523b3000000040100000000000011070000000000000000000000000073687574646f776e00",
+    "timeline": [
+      {
+        "dir": "server",
+        "type": "SETTINGS",
+        "flags": 0,
+        "stream_id": 0,
+        "note": "server SETTINGS 3:100"
+      },
+      {
+        "dir": "client",
+        "type": "PREFACE",
+        "ok": true,
+        "raw": "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+      },
+      {
+        "type": "SETTINGS",
+        "length": 24,
+        "flags": 0,
+        "flag_names": [],
+        "stream_id": 0,
+        "settings": [
+          {
+            "id": 2,
+            "name": "ENABLE_PUSH",
+            "value": 0
+          },
+          {
+            "id": 3,
+            "name": "MAX_CONCURRENT_STREAMS",
+            "value": 100
+          },
+          {
+            "id": 4,
+            "name": "INITIAL_WINDOW_SIZE",
+            "value": 2097152
+          },
+          {
+            "id": 9,
+            "name": "NO_RFC7540_PRIORITIES",
+            "value": 1
+          }
+        ],
+        "dir": "client"
+      },
+      {
+        "dir": "server",
+        "type": "SETTINGS",
+        "flags": 1,
+        "stream_id": 0,
+        "note": "SETTINGS ACK"
+      },
+      {
+        "type": "WINDOW_UPDATE",
+        "length": 4,
+        "flags": 0,
+        "flag_names": [],
+        "stream_id": 0,
+        "increment": 10420225,
+        "dir": "client"
+      },
+      {
+        "type": "HEADERS",
+        "length": 266,
+        "flags": 5,
+        "flag_names": [
+          "END_STREAM",
+          "END_HEADERS"
+        ],
+        "stream_id": 1,
+        "padding_length": null,
+        "priority": null,
+        "header_block_length": 266,
+        "headers": [
+          {
+            "name": ":method",
+            "value": "GET",
+            "representation": "indexed-static",
+            "index": 2
+          },
+          {
+            "name": ":scheme",
+            "value": "https",
+            "representation": "indexed-static",
+            "index": 7
+          },
+          {
+            "name": ":authority",
+            "value": "127.0.0.1:62748",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 1,
+            "value_huffman": true
+          },
+          {
+            "name": ":path",
+            "value": "/some/path?q=1",
+            "representation": "literal-without-indexing",
+            "name_source": "static-table",
+            "name_index": 4,
+            "value_huffman": true
+          },
+          {
+            "name": "sec-fetch-dest",
+            "value": "document",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": true
+          },
+          {
+            "name": "user-agent",
+            "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Safari/605.1.15",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 58,
+            "value_huffman": true
+          },
+          {
+            "name": "accept",
+            "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 19,
+            "value_huffman": true
+          },
+          {
+            "name": "sec-fetch-site",
+            "value": "none",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": true
+          },
+          {
+            "name": "sec-fetch-mode",
+            "value": "navigate",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": true
+          },
+          {
+            "name": "accept-language",
+            "value": "en-US,en;q=0.9",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 17,
+            "value_huffman": true
+          },
+          {
+            "name": "priority",
+            "value": "u=0, i",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": true
+          },
+          {
+            "name": "accept-encoding",
+            "value": "gzip, deflate, br",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 16,
+            "value_huffman": true
+          }
+        ],
+        "dynamic_table_size_updates": [],
+        "dir": "client"
+      },
+      {
+        "dir": "server",
+        "type": "HEADERS",
+        "flags": 4,
+        "stream_id": 1,
+        "note": "response HEADERS :status 200"
+      },
+      {
+        "dir": "server",
+        "type": "DATA",
+        "flags": 1,
+        "stream_id": 1,
+        "note": "response DATA END_STREAM"
+      },
+      {
+        "type": "SETTINGS",
+        "length": 0,
+        "flags": 1,
+        "flag_names": [
+          "ACK"
+        ],
+        "stream_id": 0,
+        "settings": [],
+        "dir": "client"
+      },
+      {
+        "type": "GOAWAY",
+        "length": 17,
+        "flags": 0,
+        "flag_names": [],
+        "stream_id": 0,
+        "last_stream_id": 0,
+        "error_code": 0,
+        "error_name": "NO_ERROR",
+        "debug_data": "shutdown\u0000",
+        "dir": "client"
+      }
+    ]
+  },
+  "alias_of": "safari2601"
+}
