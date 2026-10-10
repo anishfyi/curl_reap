@@ -1,14 +1,20 @@
-"""Ordered HTTP/1.1 transport built directly on ``socket`` and ``ssl``.
+"""The curl_reap session layer: request API, retries, rotation, caching.
 
-Unlike high-level HTTP libraries, curl_reap serializes the request line and
-headers itself.  Header order and casing are therefore stable, response bodies
-are framed without an intermediary, and idle connections can be reused.  TLS
-configuration is provided by :mod:`curl_reap.tls`; see that module for the
-important limits of browser fingerprint shaping with the standard library.
+``Session`` is the reusable object users hold: profile (impersonate target)
+selection and rotation, proxy rotation, retries with backoff, redirect
+policy, cookie persistence, disk cache, block-driven proxy rotation, and
+the whole request keyword vocabulary.  The wire work lives in
+:mod:`curl_reap.transport`; responses are :class:`curl_reap.response.Response`.
+
+Every keyword the wider ecosystem passes daily is accepted here: ``params``,
+``data``/``json``/``files``, ``cookies``, ``auth``, ``timeout`` as a float or
+``(connect, read)``, ``allow_redirects`` (True/False/"safe"), ``proxies`` in
+``{"https": ..., "all://": ...}`` form, ``stream``, ``verify`` (bool or CA
+bundle), ``cert``, ``impersonate``, ``ja3``/``akamai``/``extra_fp`` custom
+fingerprints, ``interface``, ``debug`` and the no-op compatibility keywords.
 """
 from __future__ import annotations
 
-import base64
 import json as _json
 import os
 import random
@@ -16,54 +22,40 @@ import socket
 import ssl
 import threading
 import time
-import zlib
-from email.utils import parsedate_to_datetime
-from http.cookies import SimpleCookie
-from typing import Iterable, List, Mapping, Optional, Sequence, Tuple
-from urllib.parse import quote, urlencode, urljoin, urlsplit, urlunsplit
+import warnings
+from typing import Optional
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
-from .parser import Selector
-from .tls import PROFILES, Profile, create_ssl_context, resolve_profile
-
+from .exceptions import (
+    HTTPError,
+    HTTPStatusError,
+    TransportError,
+    URLPolicyError,
+)
+from .cookies import CookieJar
+from .headers import Headers, CaseInsensitiveHeaders  # noqa: F401  (1.x alias)
+from .response import Response, detect_encoding  # noqa: F401
+from .tls import PROFILES, Profile, resolve_profile
+from .transport import (
+    _DEFAULT_MAX_BODY,
+    _Transport,
+    retry_after_seconds,  # noqa: F401  (re-export)
+)
 
 RETRY_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524})
 _IP_BLOCK_STATUSES = frozenset({403, 407, 429})
-_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
-_NO_BODY_STATUSES = frozenset({204, 205, 304})
-_CHALLENGE_MARKERS = (
-    "just a moment",
-    "checking your browser",
-    "attention required",
-    "verify you are human",
-    "javascript is disabled",
-    "enable javascript and cookies",
-    "cf-chl",
-    "_incapsula_resource",
-    "ddos protection by cloudflare",
-)
-_MAX_HEADER_BYTES = 65536
+
+_IGNORED_KWARGS = ("curl_options", "curl_infos", "thread", "curl",
+                   "use_thread_local_curl", "async_curl", "loop")
+_warned_ignored = set()
 
 
-class TransportError(OSError):
-    """A connection, TLS, or HTTP framing failure."""
-
-
-class URLPolicyError(ValueError):
-    """A configured ``url_policy`` rejected an outbound URL before it was sent."""
-
-
-def retry_after_seconds(value):
-    """Seconds a ``Retry-After`` header asks for, or None when unparsable."""
-    if value is None:
-        return None
-    try:
-        return max(0.0, float(value))
-    except (TypeError, ValueError):
-        try:
-            retry_at = parsedate_to_datetime(str(value))
-            return max(0.0, retry_at.timestamp() - time.time())
-        except (TypeError, ValueError, OverflowError):
-            return None
+def _warn_once(name):
+    if name not in _warned_ignored:
+        _warned_ignored.add(name)
+        warnings.warn(
+            "%s= is accepted for compatibility and ignored: curl_reap runs its "
+            "own transport, not libcurl" % name, stacklevel=3)
 
 
 class RetryPolicy:
@@ -72,8 +64,8 @@ class RetryPolicy:
     Only ``allowed_methods`` are replayed: by default the safe/idempotent set
     (GET, HEAD, OPTIONS, PUT, DELETE). Replaying POST/PATCH requires opting in
     explicitly, e.g. ``RetryPolicy(allowed_methods={"GET", "POST"})``.
-    ``Retry-After`` is honored verbatim - ``max_backoff`` caps only the
-    exponential fallback delay.
+    ``Retry-After`` is honored (clamped to 24 h) - ``max_backoff`` caps only
+    the exponential fallback delay.
     """
 
     IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
@@ -109,113 +101,6 @@ class RetryPolicy:
         return min(self.max_backoff, base * (0.5 + random.random()))
 
 
-class CaseInsensitiveHeaders(dict):
-    """A dict retaining received casing while providing case-insensitive lookup."""
-
-    def _actual(self, key):
-        wanted = str(key).lower()
-        for current in dict.keys(self):
-            if current.lower() == wanted:
-                return current
-        return None
-
-    def __getitem__(self, key):
-        actual = self._actual(key)
-        if actual is None:
-            raise KeyError(key)
-        return dict.__getitem__(self, actual)
-
-    def __contains__(self, key):
-        return self._actual(key) is not None
-
-    def get(self, key, default=None):
-        actual = self._actual(key)
-        if actual is None:
-            return default
-        return dict.get(self, actual, default)
-
-    def setdefault(self, key, default=None):
-        actual = self._actual(key)
-        if actual is not None:
-            return dict.__getitem__(self, actual)
-        dict.__setitem__(self, key, default)
-        return default
-
-
-def _header_items(headers):
-    if headers is None:
-        return []
-    if isinstance(headers, Mapping):
-        source = headers.items()
-    else:
-        source = headers
-    items = []
-    for item in source:
-        try:
-            name, value = item
-        except (TypeError, ValueError):
-            raise TypeError("headers must be a mapping or sequence of (name, value) pairs")
-        name = str(name)
-        if not name or ":" in name or "\r" in name or "\n" in name:
-            raise ValueError("invalid HTTP header name %r" % name)
-        if value is not None:
-            value = str(value)
-            if "\r" in value or "\n" in value:
-                raise ValueError("invalid newline in HTTP header %s" % name)
-        items.append((name, value))
-    return items
-
-
-def _merge_headers(*sources):
-    """Case-insensitive last-wins merge without losing deterministic position."""
-    merged = []
-    positions = {}
-    for source in sources:
-        for name, value in _header_items(source):
-            lower = name.lower()
-            if value is None:
-                if lower in positions:
-                    merged.pop(positions[lower])
-                    positions = {n.lower(): i for i, (n, unused) in enumerate(merged)}
-                continue
-            if lower in positions:
-                merged[positions[lower]] = (name, value)
-            else:
-                positions[lower] = len(merged)
-                merged.append((name, value))
-    return merged
-
-
-def _find_header(headers, name):
-    lower = name.lower()
-    for current, value in headers:
-        if current.lower() == lower:
-            return value
-    return None
-
-
-def _authority(host, port, default_port):
-    rendered = "[%s]" % host if ":" in host and not host.startswith("[") else host
-    if port == default_port:
-        return rendered
-    return "%s:%s" % (rendered, port)
-
-
-def _request_target(parts):
-    path = quote(parts.path or "/", safe="/%:@!$&'()*+,;=-._~")
-    query = quote(parts.query, safe="=&?/:;+,%@!$'()*-._~")
-    return path + (("?" + query) if query else "")
-
-
-def _url_with_params(url, params):
-    if not params:
-        return url
-    parts = urlsplit(url)
-    encoded = urlencode(params, doseq=True)
-    query = "&".join(part for part in (parts.query, encoded) if part)
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
-
-
 def _encode_body(data=None, json=None):
     if data is not None and json is not None:
         raise ValueError("data and json are mutually exclusive")
@@ -230,1090 +115,18 @@ def _encode_body(data=None, json=None):
         return bytes(data), None
     if isinstance(data, str):
         return data.encode("utf-8"), None
-    if isinstance(data, Mapping) or isinstance(data, (list, tuple)):
+    if isinstance(data, dict) or isinstance(data, (list, tuple)):
         return urlencode(data, doseq=True).encode("ascii"), "application/x-www-form-urlencoded"
     raise TypeError("data must be bytes, str, a mapping, or a sequence of pairs")
 
 
-def _decode_content(content, encoding):
-    if not content or not encoding:
-        return content
-    encodings = [item.strip().lower() for item in encoding.split(",") if item.strip()]
-    decoded = content
-    for current in reversed(encodings):
-        if current in ("identity", ""):
-            continue
-        if current in ("gzip", "x-gzip"):
-            try:
-                decoded = zlib.decompress(decoded, 16 + zlib.MAX_WBITS)
-            except zlib.error as exc:
-                raise TransportError("invalid gzip response body: %s" % exc)
-        elif current == "deflate":
-            try:
-                decoded = zlib.decompress(decoded)
-            except zlib.error:
-                try:
-                    decoded = zlib.decompress(decoded, -zlib.MAX_WBITS)
-                except zlib.error as exc:
-                    raise TransportError("invalid deflate response body: %s" % exc)
-        elif current == "br":
-            try:
-                import brotli
-            except ImportError:
-                raise TransportError("received Brotli content but optional 'brotli' is not installed")
-            try:
-                decoded = brotli.decompress(decoded)
-            except Exception as exc:  # third-party implementations use different errors
-                raise TransportError("invalid Brotli response body: %s" % exc)
-        else:
-            raise TransportError("unsupported Content-Encoding %r" % current)
-    return decoded
-
-
-class _BufferedSocket:
-    def __init__(self, sock):
-        self.sock = sock
-        self.buffer = bytearray()
-
-    def _receive(self):
-        try:
-            chunk = self.sock.recv(65536)
-        except (OSError, ssl.SSLError) as exc:
-            raise TransportError(str(exc))
-        if not chunk:
-            raise TransportError("connection closed before the response was complete")
-        self.buffer.extend(chunk)
-
-    def read_until(self, marker, limit=None):
-        while True:
-            position = self.buffer.find(marker)
-            if position >= 0:
-                end = position + len(marker)
-                result = bytes(self.buffer[:end])
-                del self.buffer[:end]
-                return result
-            if limit is not None and len(self.buffer) >= limit:
-                raise TransportError("HTTP response headers exceed %s bytes" % limit)
-            self._receive()
-
-    def read_exact(self, size):
-        while len(self.buffer) < size:
-            self._receive()
-        result = bytes(self.buffer[:size])
-        del self.buffer[:size]
-        return result
-
-    def read_exact_into(self, total, write, bufsize=262144):
-        """Stream exactly ``total`` buffered+wire bytes through ``write``."""
-        remaining = total
-        while remaining > 0:
-            if self.buffer:
-                take = min(len(self.buffer), remaining, bufsize)
-                write(bytes(self.buffer[:take]))
-                del self.buffer[:take]
-                remaining -= take
-            else:
-                self._receive()
-
-    def drain_to_close(self, write, bufsize=262144):
-        """Stream every byte until the peer closes; return the count."""
-        saved = 0
-        while True:
-            if self.buffer:
-                write(bytes(self.buffer))
-                saved += len(self.buffer)
-                self.buffer.clear()
-            try:
-                chunk = self.sock.recv(bufsize)
-            except (OSError, ssl.SSLError) as exc:
-                raise TransportError(str(exc))
-            if not chunk:
-                return saved
-            write(chunk)
-            saved += len(chunk)
-
-    def read_to_close(self):
-        chunks = [bytes(self.buffer)]
-        self.buffer.clear()
-        while True:
-            try:
-                chunk = self.sock.recv(65536)
-            except (OSError, ssl.SSLError) as exc:
-                raise TransportError(str(exc))
-            if not chunk:
-                return b"".join(chunks)
-            chunks.append(chunk)
-
-
-class _Connection:
-    def __init__(self, sock, key):
-        self.sock = sock
-        self.reader = _BufferedSocket(sock)
-        self.h2 = None  # H2Protocol when ALPN negotiated h2
-        self.key = key
-        self.closed = False
-
-    def close(self):
-        if self.closed:
-            return
-        self.closed = True
-        try:
-            self.sock.close()
-        except OSError:
-            pass
-
-
-class _RawResponse:
-    def __init__(self, status, reason, version, url, headers, content, cookies=None,
-                 cookie_specs=None, saved_bytes=0):
-        self.status_code = status
-        self.reason = reason
-        self.http_version = version
-        self.url = url
-        self.headers = headers
-        self.content = content
-        self.cookies = cookies or {}
-        self.cookie_specs = cookie_specs or []
-        self.saved_bytes = saved_bytes
-        self.history = []
-        encoding = detect_encoding(content, headers) or "utf-8"
-        try:
-            self.text = content.decode(encoding, "replace")
-        except (LookupError, TypeError):
-            self.text = content.decode("utf-8", "replace")
-
-    def json(self):
-        return _json.loads(self.text)
-
-
-class _StreamDecoder:
-    """Incremental Content-Encoding decoder for streaming sinks."""
-
-    def __init__(self, content_encoding):
-        encoding = (content_encoding or "").strip().lower()
-        if encoding in ("", "identity"):
-            raise ValueError("nothing to decode")
-        if "gzip" in encoding:
-            self._dec = zlib.decompressobj(16 + zlib.MAX_WBITS)
-        elif "deflate" in encoding:
-            self._dec = zlib.decompressobj()
-            self._maybe_raw = True
-        else:
-            raise TransportError(
-                "cannot stream a %r encoded body to a file; install brotli "
-                "support upstream or disable that Accept-Encoding" % encoding)
-
-    def feed(self, data):
-        try:
-            return self._dec.decompress(data)
-        except zlib.error:
-            # Some servers send raw-deflate where zlib-wrapped was promised;
-            # restart with the raw window on the first failure.
-            if getattr(self, "_maybe_raw", False):
-                self._dec = zlib.decompressobj(-zlib.MAX_WBITS)
-                self._maybe_raw = False
-                return self._dec.decompress(data)
-            raise TransportError("corrupt %s response body" % "compressed")
-
-    def finish(self):
-        try:
-            return self._dec.flush()
-        except zlib.error:
-            raise TransportError("truncated compressed response body")
-
-
-def _parse_set_cookie(value):
-    """Parse one Set-Cookie header into ``(name, value, spec)`` triples.
-
-    ``spec["domain"]`` is None when no Domain attribute was sent (host-only
-    cookie) and ``spec["path"]`` is None when no Path attribute was sent
-    (the jar then applies the request's default-path); both are kept
-    distinct from explicit ``/`` or attribute values so scope semantics
-    survive into :class:`CookieJar`.
-    """
-    parsed = SimpleCookie()
-    try:
-        parsed.load(value)
-    except Exception:
-        return ()
-    out = []
-    for key, morsel in parsed.items():
-        expires = None
-        raw_expires = morsel["expires"]
-        if raw_expires:
-            try:
-                expires = parsedate_to_datetime(raw_expires).timestamp()
-            except Exception:
-                expires = None
-        out.append((key, morsel.value, {
-            "name": key,
-            "value": morsel.value,
-            "domain": (morsel["domain"] or "").lstrip(".").lower() or None,
-            "path": morsel["path"] or None,
-            "secure": bool(morsel["secure"]),
-            "max_age": morsel["max-age"],
-            "expires": expires,
-        }))
-    return tuple(out)
-
-
-def _body_streamer(write, headers):
-    """Wrap ``write`` with incremental decoding when the body is compressed."""
-    encoding = (headers.get("Content-Encoding") or "").strip().lower()
-    try:
-        decoder = _StreamDecoder(encoding)
-    except ValueError:
-        return write
-    total = [0]
-
-    def feed(chunk):
-        out = decoder.feed(chunk)
-        if out:
-            write(out)
-            total[0] += len(out)
-        return len(chunk)
-
-    feed.finish = lambda: decoder.finish()
-    return feed
-
-
-def _is_ip_literal(host):
-    if not host:
-        return False
-    if ":" in host:
-        return True
-    return all(c.isdigit() or c == "." for c in host)
-
-
-def _default_cookie_path(request_path):
-    """RFC 6265 default-path: the request path's directory."""
-    if not request_path or not request_path.startswith("/"):
-        return "/"
-    if request_path.count("/") == 1:
-        return "/"
-    return request_path[:request_path.rindex("/")] or "/"
-
-
-def _cookie_path_match(request_path, cookie_path):
-    """Path-match with a real boundary: ``/app`` must not match ``/apple``."""
-    if request_path == cookie_path:
-        return True
-    if not request_path.startswith(cookie_path):
-        return False
-    if cookie_path.endswith("/"):
-        return True
-    return request_path[len(cookie_path):len(cookie_path) + 1] == "/"
-
-
-def _cookie_domain_match(host, domain, host_only):
-    if host_only:
-        return host == domain
-    return host == domain or host.endswith("." + domain)
-
-
-class CookieJar:
-    """In-memory cookie store scoped by domain, path and name.
-
-    ``Session`` keeps one jar for its lifetime: response cookies are stored
-    automatically (including on every redirect hop) and replayed on matching
-    requests. Thread-safe. Cookies live only as long as the process.
-
-    Cookies set without a ``Domain`` attribute are host-only: they never
-    reach subdomains. A ``Domain`` attribute is accepted only when it names
-    the origin host or a parent of it - foreign hosts and IP-literal domains
-    are rejected outright. Domain cookies match the host and its subdomains
-    with or without the leading dot. Full public-suffix validation is not
-    performed, so ``Domain=co.uk`` on ``example.co.uk`` is accepted.
-
-    ``get_dict`` is a lossy flattened view: same-named cookies held under
-    different (domain, path) scopes coexist in the jar but collapse to one
-    entry here (the most recently stored wins).
-    """
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        # name -> {"value","domain","path","secure","expires"}
-        self._cookies = {}
-        self._seq = 0
-
-    def absorb(self, url, specs):
-        """Store parsed Set-Cookie attribute dicts from one response."""
-        parts = urlsplit(url)
-        origin_host = (parts.hostname or "").lower()
-        request_path = parts.path or "/"
-        now = time.time()
-        with self._lock:
-            for spec in specs:
-                name = spec["name"]
-                raw_domain = spec.get("domain")
-                host_only = not raw_domain
-                if host_only:
-                    domain = origin_host
-                else:
-                    domain = str(raw_domain).lstrip(".").lower()
-                    if (not domain or _is_ip_literal(origin_host)
-                            or _is_ip_literal(domain)
-                            or not (origin_host == domain
-                                    or origin_host.endswith("." + domain))):
-                        continue
-                path = spec.get("path")
-                if not path or not str(path).startswith("/"):
-                    path = _default_cookie_path(request_path)
-                key = (domain, path, name)
-                expires = spec.get("expires")
-                max_age = spec.get("max_age")
-                if max_age is not None and str(max_age) != "":
-                    try:
-                        expires = now + float(max_age)
-                    except (TypeError, ValueError):
-                        pass
-                if expires is not None and expires <= now:
-                    self._cookies.pop(key, None)
-                    continue
-                self._seq += 1
-                self._cookies[key] = {
-                    "value": spec["value"],
-                    "domain": domain,
-                    "path": path,
-                    "secure": bool(spec.get("secure")),
-                    "expires": expires,
-                    "host_only": host_only,
-                    "seq": self._seq,
-                }
-
-    def store(self, url, pairs):
-        """Store plain name/value pairs against ``url``'s host."""
-        self.absorb(url, [{"name": n, "value": v} for n, v in dict(pairs).items()])
-
-    def header_for(self, url):
-        """Cookie header value for ``url``, or empty string when none match."""
-        parts = urlsplit(url)
-        host = (parts.hostname or "").lower()
-        secure = parts.scheme.lower() == "https"
-        path = parts.path or "/"
-        now = time.time()
-        pairs = []
-        with self._lock:
-            for key in list(self._cookies):
-                cookie = self._cookies[key]
-                if cookie["expires"] is not None and cookie["expires"] <= now:
-                    del self._cookies[key]
-                    continue
-                if cookie["secure"] and not secure:
-                    continue
-                if not _cookie_domain_match(host, cookie["domain"], cookie["host_only"]):
-                    continue
-                if not _cookie_path_match(path, cookie["path"]):
-                    continue
-                pairs.append((cookie["path"], cookie["seq"],
-                              "%s=%s" % (key[2], cookie["value"])))
-        pairs.sort(key=lambda item: (-len(item[0]), item[1]))
-        return "; ".join(pair[2] for pair in pairs)
-
-    def get_dict(self):
-        with self._lock:
-            now = time.time()
-            return {key[2]: c["value"]
-                    for key, c in sorted(self._cookies.items(),
-                                         key=lambda kv: kv[1]["seq"])
-                    if c["expires"] is None or c["expires"] > now}
-
-    def clear(self):
-        with self._lock:
-            self._cookies.clear()
-
-    def __repr__(self):
-        return "CookieJar(%d cookies)" % len(self._cookies)
-
-
-class _Transport:
-    """Thread-safe pool of idle HTTP connections (HTTP/1.1 and optional h2)."""
-
-    def __init__(self, http2=False):
-        self._pool = {}
-        self._contexts = {}
-        self._lock = threading.Lock()
-        self._closed = False
-        self.http2 = bool(http2)
-
-    def _context(self, profile, verify):
-        key = (profile, verify)
-        alpn = ("http/1.1",)
-        if self.http2:
-            try:
-                import h2  # noqa: F401
-                alpn = ("h2", "http/1.1")
-            except ImportError:
-                pass
-        with self._lock:
-            context = self._contexts.get(key)
-        if context is None:
-            context = create_ssl_context(profile, verify=verify, alpn=alpn)
-            with self._lock:
-                context = self._contexts.setdefault(key, context)
-        return context
-
-    def _connection_key(self, scheme, host, port, proxy, profile, verify):
-        return (scheme, host, port, proxy, profile, verify)
-
-    def _acquire(self, scheme, host, port, proxy, profile, verify, timeout):
-        key = self._connection_key(scheme, host, port, proxy, profile, verify)
-        with self._lock:
-            pooled = self._pool.get(key)
-            conn = pooled.pop() if pooled else None
-        if conn is not None:
-            try:
-                conn.sock.settimeout(timeout)
-            except (AttributeError, OSError):
-                pass
-            return conn
-        return self._connect(scheme, host, port, proxy, profile, verify, timeout, key)
-
-    def _connect(self, scheme, host, port, proxy, profile, verify, timeout, key):
-        connect_host, connect_port = host, port
-        proxy_parts = None
-        if proxy:
-            proxy_parts = urlsplit(proxy if "://" in proxy else "http://" + proxy)
-            if proxy_parts.scheme.lower() != "http":
-                raise ValueError("only HTTP CONNECT proxies are supported")
-            if not proxy_parts.hostname:
-                raise ValueError("proxy must include a hostname")
-            connect_host = proxy_parts.hostname
-            connect_port = proxy_parts.port or 8080
-        try:
-            sock = socket.create_connection((connect_host, connect_port), timeout=timeout)
-            try:
-                sock.settimeout(timeout)
-            except AttributeError:
-                pass
-        except OSError as exc:
-            raise TransportError("could not connect to %s:%s: %s" %
-                                 (connect_host, connect_port, exc))
-
-        try:
-            if proxy_parts is not None and scheme == "https":
-                authority = _authority(host, port, 443)
-                lines = ["CONNECT %s HTTP/1.1" % authority, "Host: %s" % authority]
-                auth = self._proxy_authorization(proxy_parts)
-                if auth:
-                    lines.append("Proxy-Authorization: %s" % auth)
-                payload = ("\r\n".join(lines) + "\r\n\r\n").encode("latin-1")
-                sock.sendall(payload)
-                reader = _BufferedSocket(sock)
-                head = reader.read_until(b"\r\n\r\n", _MAX_HEADER_BYTES)
-                first = head.split(b"\r\n", 1)[0].decode("latin-1", "replace")
-                parts = first.split(" ", 2)
-                if len(parts) < 2 or not parts[1].isdigit() or int(parts[1]) != 200:
-                    raise TransportError("proxy CONNECT failed: %s" % first)
-            if scheme == "https":
-                context = self._context(profile, verify)
-                sock = context.wrap_socket(sock, server_hostname=host)
-                selected = getattr(sock, "selected_alpn_protocol", lambda: None)()
-                if selected not in (None, "http/1.1", "h2"):
-                    raise TransportError("server negotiated unsupported ALPN protocol %s" % selected)
-            conn = _Connection(sock, key)
-            if scheme == "https" and selected == "h2":
-                from .h2engine import H2Protocol
-                conn.h2 = H2Protocol(sock)
-            return conn
-        except Exception:
-            try:
-                sock.close()
-            except OSError:
-                pass
-            raise
-
-    @staticmethod
-    def _proxy_authorization(proxy_parts):
-        if proxy_parts.username is None:
-            return None
-        from urllib.parse import unquote
-        user = unquote(proxy_parts.username)
-        password = unquote(proxy_parts.password or "")
-        token = base64.b64encode((user + ":" + password).encode("utf-8")).decode("ascii")
-        return "Basic " + token
-
-    def _release(self, conn, reusable):
-        if not reusable or self._closed:
-            conn.close()
-            return
-        with self._lock:
-            self._pool.setdefault(conn.key, []).append(conn)
-
-    def _response(self, conn, method, url, sink=None):
-        while True:
-            head = conn.reader.read_until(b"\r\n\r\n", _MAX_HEADER_BYTES)
-            raw_lines = head[:-4].split(b"\r\n")
-            if not raw_lines:
-                raise TransportError("empty HTTP response")
-            status_line = raw_lines[0].decode("latin-1", "replace")
-            parts = status_line.split(" ", 2)
-            if len(parts) < 2 or not parts[0].startswith("HTTP/") or not parts[1].isdigit():
-                raise TransportError("malformed HTTP status line %r" % status_line)
-            version = parts[0]
-            status = int(parts[1])
-            reason = parts[2] if len(parts) == 3 else ""
-            headers = CaseInsensitiveHeaders()
-            received_headers = []
-            previous = None
-            for raw_line in raw_lines[1:]:
-                if raw_line[:1] in (b" ", b"\t") and previous is not None:
-                    value = headers[previous] + " " + raw_line.decode("latin-1").strip()
-                    dict.__setitem__(headers, previous, value)
-                    received_headers[-1] = (previous, value)
-                    continue
-                if b":" not in raw_line:
-                    raise TransportError("malformed HTTP response header")
-                raw_name, raw_value = raw_line.split(b":", 1)
-                name = raw_name.decode("latin-1").strip()
-                value = raw_value.decode("latin-1").strip()
-                previous = name
-                received_headers.append((name, value))
-                actual = headers._actual(name)
-                if actual is None:
-                    dict.__setitem__(headers, name, value)
-                else:
-                    dict.__setitem__(headers, actual, headers[actual] + ", " + value)
-            if status < 200 and status != 101:
-                continue
-            break
-
-        no_body = method.upper() == "HEAD" or status in _NO_BODY_STATUSES or 100 <= status < 200
-        reusable = True
-        saved = 0
-        if no_body:
-            content = b""
-        elif sink is not None and status not in _REDIRECT_STATUSES:
-            # Stream to disk: bytes land in the file as they come off the
-            # wire, with transparent gzip/deflate decoding.
-            part_path = sink + ".reap-part"
-            try:
-                with open(part_path, "wb") as fh:
-                    feed = _body_streamer(fh.write, headers)
-                    if "chunked" in (headers.get("Transfer-Encoding") or "").lower():
-                        self._read_chunked_into(conn, headers, feed)
-                    elif headers.get("Content-Length") is not None:
-                        length = int(headers.get("Content-Length"))
-                        conn.reader.read_exact_into(length, feed)
-                    else:
-                        conn.reader.drain_to_close(feed)
-                        reusable = False
-                    tail = getattr(feed, "finish", None)
-                    if tail is not None:
-                        rest = tail()
-                        if rest:
-                            fh.write(rest)
-                    saved = fh.tell()
-                os.replace(part_path, sink)
-            except BaseException:
-                try:
-                    os.remove(part_path)
-                except OSError:
-                    pass
-                raise
-            content = b""
-        elif "chunked" in (headers.get("Transfer-Encoding") or "").lower():
-            content = self._read_chunked(conn, headers)
-        elif headers.get("Content-Length") is not None:
-            try:
-                length = int(headers.get("Content-Length"))
-            except (TypeError, ValueError):
-                raise TransportError("invalid Content-Length header")
-            if length < 0:
-                raise TransportError("invalid negative Content-Length")
-            content = conn.reader.read_exact(length)
-        else:
-            content = conn.reader.read_to_close()
-            reusable = False
-
-        connection_header = (headers.get("Connection") or "").lower()
-        if connection_header == "close" or (version == "HTTP/1.0" and connection_header != "keep-alive"):
-            reusable = False
-        decoded = content if sink is not None else _decode_content(content, headers.get("Content-Encoding"))
-        cookies = {}
-        cookie_specs = []
-        for name, value in received_headers:
-            if name.lower() == "set-cookie":
-                for cname, cvalue, spec in _parse_set_cookie(value):
-                    cookies[cname] = cvalue
-                    cookie_specs.append(spec)
-        raw = _RawResponse(status, reason, version, url, headers, decoded, cookies,
-                           cookie_specs=cookie_specs, saved_bytes=saved)
-        return raw, reusable
-
-    @staticmethod
-    def _read_chunked_into(conn, headers, write):
-        """Stream a chunked body straight to ``write``; return bytes written."""
-        saved = 0
-        reader = conn.reader
-        while True:
-            line = reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
-            size_text = line.split(b";", 1)[0].strip()
-            try:
-                size = int(size_text, 16)
-            except ValueError:
-                raise TransportError("invalid chunk size %r" % size_text.decode("latin-1", "replace"))
-            if size < 0:
-                raise TransportError("invalid negative chunk size")
-            if size == 0:
-                while True:
-                    trailer = reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
-                    if not trailer:
-                        return saved
-                    if b":" not in trailer:
-                        raise TransportError("malformed HTTP trailer")
-            reader.read_exact_into(size, write)
-            saved += size
-            if reader.read_exact(2) != b"\r\n":
-                raise TransportError("chunk data is not terminated by CRLF")
-
-    @staticmethod
-    def _read_chunked(conn, headers):
-        chunks = []
-        while True:
-            line = conn.reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
-            size_text = line.split(b";", 1)[0].strip()
-            try:
-                size = int(size_text, 16)
-            except ValueError:
-                raise TransportError("invalid chunk size %r" % size_text.decode("latin-1", "replace"))
-            if size < 0:
-                raise TransportError("invalid negative chunk size")
-            if size == 0:
-                while True:
-                    trailer = conn.reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
-                    if not trailer:
-                        return b"".join(chunks)
-                    if b":" not in trailer:
-                        raise TransportError("malformed HTTP trailer")
-                    name, value = trailer.split(b":", 1)
-                    headers.setdefault(name.decode("latin-1").strip(),
-                                       value.decode("latin-1").strip())
-            chunks.append(conn.reader.read_exact(size))
-            if conn.reader.read_exact(2) != b"\r\n":
-                raise TransportError("chunk data is not terminated by CRLF")
-
-    def _single_request(self, method, url, profile, custom_headers, body,
-                        content_type, timeout, proxy, verify, auth, sink=None):
-        parts = urlsplit(url)
-        scheme = parts.scheme.lower()
-        if scheme not in ("http", "https"):
-            raise ValueError("URL scheme must be http or https")
-        if not parts.hostname:
-            raise ValueError("URL must include a hostname")
-        try:
-            host = parts.hostname.encode("idna").decode("ascii")
-            port = parts.port or (443 if scheme == "https" else 80)
-        except (UnicodeError, ValueError) as exc:
-            raise ValueError("invalid URL host or port: %s" % exc)
-        authority = _authority(host, port, 443 if scheme == "https" else 80)
-
-        automatic = []
-        if auth is not None:
-            if not isinstance(auth, (tuple, list)) or len(auth) != 2:
-                raise TypeError("auth must be a (username, password) pair")
-            token = base64.b64encode((str(auth[0]) + ":" + str(auth[1])).encode("utf-8"))
-            automatic.append(("Authorization", "Basic " + token.decode("ascii")))
-        elif parts.username is not None:
-            from urllib.parse import unquote
-            credentials = unquote(parts.username) + ":" + unquote(parts.password or "")
-            token = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
-            automatic.append(("Authorization", "Basic " + token))
-
-        headers = _merge_headers((("Host", authority),), profile.headers,
-                                 custom_headers)
-        if content_type and _find_header(headers, "Content-Type") is None:
-            headers = _merge_headers(headers, (("Content-Type", content_type),))
-        if body or method.upper() in ("POST", "PUT", "PATCH"):
-            headers = _merge_headers(headers, (("Content-Length", str(len(body))),))
-        if automatic:
-            headers = _merge_headers(headers, automatic)
-        proxy_parts = None
-        if proxy:
-            proxy_parts = urlsplit(proxy if "://" in proxy else "http://" + proxy)
-            if scheme == "http":
-                proxy_auth = self._proxy_authorization(proxy_parts)
-                if proxy_auth:
-                    headers = _merge_headers(headers, (("Proxy-Authorization", proxy_auth),))
-
-        target = _request_target(parts)
-        if proxy_parts is not None and scheme == "http":
-            netloc = authority
-            target = urlunsplit((scheme, netloc, quote(parts.path or "/", safe="/%:@!$&'()*+,;=-._~"),
-                                 quote(parts.query, safe="=&?/:;+,%@!$'()*-._~"), ""))
-
-        conn = self._acquire(scheme, host, port, proxy, profile, verify, timeout)
-        reusable = False
-        try:
-            if conn.h2 is not None:
-                response = self._h2_exchange(conn, method, scheme, authority,
-                                             target, headers, body,
-                                             content_type)
-                reusable = True
-                if sink is not None:
-                    # h2 responses buffer before framing; write through the
-                    # same atomic part-file dance as the streaming path.
-                    part_path = sink + ".reap-part"
-                    with open(part_path, "wb") as fh:
-                        fh.write(response.content)
-                    os.replace(part_path, sink)
-                    response.saved_bytes = len(response.content)
-                return response
-            request_line = "%s %s HTTP/1.1\r\n" % (method.upper(), target)
-            rendered = [request_line.encode("ascii")]
-            for name, value in headers:
-                try:
-                    rendered.append(("%s: %s\r\n" % (name, value)).encode("latin-1"))
-                except UnicodeEncodeError:
-                    raise ValueError("HTTP header %s is not latin-1 encodable" % name)
-            rendered.append(b"\r\n")
-            payload = b"".join(rendered) + body
-            conn.sock.sendall(payload)
-            response, reusable = self._response(conn, method, url, sink=sink)
-            if (_find_header(headers, "Connection") or "").lower() == "close":
-                reusable = False
-            return response
-        except (OSError, ssl.SSLError) as exc:
-            if isinstance(exc, TransportError):
-                raise
-            raise TransportError(str(exc))
-        finally:
-            self._release(conn, reusable)
-
-    def _h2_exchange(self, conn, method, scheme, authority, target, headers,
-                     body, content_type):
-        """One HTTP/2 request on the pooled connection's next stream."""
-        status, header_list, content = conn.h2.request(
-            method, target, authority, scheme, headers, body=body,
-            content_type=content_type)
-        cookies = {}
-        cookie_specs = []
-        merged = []
-        positions = {}
-        for name, value in header_list:
-            lower = name.lower()
-            if lower == "set-cookie":
-                for cname, cvalue, spec in _parse_set_cookie(value):
-                    cookies[cname] = cvalue
-                    cookie_specs.append(spec)
-                # Set-Cookie lines stay separate, never comma-merged
-                merged.append((name, value))
-                positions[lower] = len(merged) - 1
-                continue
-            if lower in positions:
-                merged[positions[lower]] = (
-                    name, merged[positions[lower]][1] + ", " + value)
-            else:
-                positions[lower] = len(merged)
-                merged.append((name, value))
-        ci = CaseInsensitiveHeaders()
-        for name, value in merged:
-            dict.__setitem__(ci, name, value)
-        return _RawResponse(status, "", "HTTP/2",
-                            urljoin("https://" + authority, target), ci,
-                            content, cookies, cookie_specs=cookie_specs)
-
-    _STRIP_ON_ORIGIN_CHANGE = frozenset({
-        "authorization", "cookie", "proxy-authorization", "host"})
-    _STRIP_ON_METHOD_REWRITE = frozenset({
-        "content-length", "content-type", "content-encoding",
-        "transfer-encoding", "content-md5"})
-
-    @staticmethod
-    def _origin(url):
-        parts = urlsplit(url)
-        scheme = parts.scheme.lower()
-        port = parts.port or (443 if scheme == "https" else 80)
-        return (scheme, (parts.hostname or "").lower(), port)
-
-    def request(self, method, url, profile, headers=None, body=b"", content_type=None,
-                timeout=30, proxy=None, verify=True, auth=None,
-                allow_redirects=True, max_redirects=10, cookie_jar=None, sink=None,
-                url_policy=None):
-        current_method = method.upper()
-        current_url = url
-        current_body = body
-        current_content_type = content_type
-        current_auth = auth
-        base_headers = headers
-        redirects = 0
-        history = []
-        explicit_cookie = headers is not None and _find_header(headers, "Cookie") is not None
-        while True:
-            if url_policy is not None and not url_policy(current_url):
-                raise URLPolicyError("url_policy rejected %s" % current_url)
-            hop_headers = base_headers
-            if cookie_jar is not None and not explicit_cookie:
-                # Fresh cookies (including ones set on an earlier hop) are
-                # replayed on every hop of this request.
-                cookie_header = cookie_jar.header_for(current_url)
-                if cookie_header:
-                    hop_headers = tuple(
-                        h for h in (hop_headers or ()) if h[0].lower() != "cookie"
-                    ) + (("Cookie", cookie_header),)
-            response = self._single_request(
-                current_method, current_url, profile, hop_headers, current_body,
-                current_content_type, timeout, proxy, verify, current_auth,
-                sink=sink)
-            if cookie_jar is not None and response.cookie_specs:
-                try:
-                    cookie_jar.absorb(current_url, response.cookie_specs)
-                except Exception:
-                    pass
-            location = response.headers.get("Location")
-            if not allow_redirects or response.status_code not in _REDIRECT_STATUSES or not location:
-                response.history = history
-                return response
-            if redirects >= max_redirects:
-                raise TransportError("too many redirects (maximum %s)" % max_redirects)
-            next_url = urljoin(current_url, location)
-            history.append(response)
-            if self._origin(next_url) != self._origin(current_url):
-                current_auth = None
-                base_headers = tuple(
-                    h for h in (base_headers or ())
-                    if h[0].lower() not in self._STRIP_ON_ORIGIN_CHANGE)
-                explicit_cookie = False
-            if response.status_code == 303 or (
-                    response.status_code in (301, 302) and current_method == "POST"):
-                current_method = "GET"
-                current_body = b""
-                current_content_type = None
-                base_headers = tuple(
-                    h for h in (base_headers or ())
-                    if h[0].lower() not in self._STRIP_ON_METHOD_REWRITE)
-            current_url = next_url
-            redirects += 1
-
-    def close(self):
-        with self._lock:
-            self._closed = True
-            connections = [conn for group in self._pool.values() for conn in group]
-            self._pool.clear()
-        for conn in connections:
-            conn.close()
-
-
-_META_CHARSET = __import__("re").compile(
-    rb'<meta[^>]+?charset=["\']?\s*([a-zA-Z0-9_\-]+)', __import__("re").I)
-_META_CT = __import__("re").compile(
-    rb'<meta[^>]+?content=["\'][^"\']*?charset=\s*([a-zA-Z0-9_\-]+)', __import__("re").I)
-
-
-def detect_encoding(content, headers=None):
-    """Detect a useful charset from BOM, Content-Type, or HTML metadata."""
-    import re
-    if not content:
-        return None
-    if content[:3] == b"\xef\xbb\xbf":
-        return "utf-8-sig"
-    if content[:2] in (b"\xff\xfe", b"\xfe\xff"):
-        return "utf-16"
-    content_type = ""
-    if headers:
-        content_type = headers.get("Content-Type") or headers.get("content-type") or ""
-    match = re.search(r"charset=[\"']?\s*([a-zA-Z0-9_\-]+)", content_type, re.I)
-    if match:
-        return match.group(1)
-    head = content[:4096]
-    match = _META_CHARSET.search(head) or _META_CT.search(head)
-    if match:
-        try:
-            return match.group(1).decode("ascii")
-        except (UnicodeDecodeError, AttributeError):
-            pass
-    return None
-
-
-class Response:
-    """A fetched page. CSS and XPath methods pass through to ``Selector``."""
-
-    def __init__(self, raw=None, meta=None, elapsed=0.0, *, status=None, url=None,
-                 headers=None, content=None, text=None, from_cache=False):
-        self.raw = raw
-        if raw is not None:
-            self.status = raw.status_code
-            self.url = str(raw.url)
-            self.headers = CaseInsensitiveHeaders(raw.headers)
-            self.text = raw.text
-            self.content = raw.content
-            self._cookies = dict(getattr(raw, "cookies", {}) or {})
-            self.history = [Response(raw=hop) for hop in getattr(raw, "history", ())]
-        else:
-            self.status = status
-            self.url = url
-            self.headers = CaseInsensitiveHeaders(headers or {})
-            if content is not None:
-                self.content = content
-                encoding = detect_encoding(content, self.headers) or "utf-8"
-                if text is not None:
-                    self.text = text
-                else:
-                    try:
-                        self.text = content.decode(encoding, "replace")
-                    except (LookupError, TypeError):
-                        self.text = content.decode("utf-8", "replace")
-            else:
-                self.text = text or ""
-                self.content = self.text.encode("utf-8")
-            self._cookies = {}
-            self.history = []
-        self.meta = meta or {}
-        self.elapsed = elapsed
-        self.from_cache = from_cache
-        self._sel = None
-        self._encoding = None
-        self._fix_garbled_text()
-
-    def _fix_garbled_text(self):
-        text = self.text
-        if not text or "�" not in text or not self.content:
-            return
-        encoding = detect_encoding(self.content, self.headers)
-        if not encoding:
-            return
-        try:
-            decoded = self.content.decode(encoding, "replace")
-        except (LookupError, TypeError):
-            return
-        if decoded.count("�") < text.count("�"):
-            self.text = decoded
-            self._encoding = encoding
-
-    @property
-    def ok(self):
-        return self.status is not None and 200 <= self.status < 300
-
-    @property
-    def encoding(self):
-        if self._encoding is None:
-            self._encoding = detect_encoding(self.content, self.headers) or "utf-8"
-        return self._encoding
-
-    @property
-    def status_code(self):
-        return self.status
-
-    @property
-    def cookies(self):
-        return dict(self._cookies)
-
-    @property
-    def looks_like_challenge(self):
-        """True when the body smells like a bot wall instead of real content.
-
-        Heuristic: matches common JS-challenge markers (Cloudflare's interstitial,
-        "enable JavaScript" shells, Incapsula). A True here means the fetch
-        reached the door but the page is rendered client-side; see
-        ``curl_reap.render`` for an escape hatch.
-        """
-        head = (self.text or "")[:6000].lower()
-        if not head:
-            return False
-        if any(marker in head for marker in _CHALLENGE_MARKERS):
-            return True
-        if "requestsubmit" in head and ('name="solution"' in head
-                                        or "name='solution'" in head):
-            return "<p" not in head and "<article" not in head
-        return False
-
-    _BLOCK_REASONS = {403: "forbidden", 407: "proxy_auth_required",
-                      429: "rate_limited"}
-
-    @property
-    def block_reason(self):
-        """Why the fetch was turned away, or None.
-
-        ``rate_limited`` (429), ``proxy_auth_required`` (407), ``forbidden``
-        (403), or ``challenge`` when a 2xx body heuristically looks like an
-        interstitial instead of real content. Other statuses return None.
-        """
-        if self.status in self._BLOCK_REASONS:
-            return self._BLOCK_REASONS[self.status]
-        if self.looks_like_challenge:
-            return "challenge"
-        return None
-
-    def raise_for_status(self):
-        if not self.ok:
-            raise HTTPStatusError(self)
-        return self
-
-    def urljoin(self, url):
-        base = self.selector().base_url or self.url or ""
-        return urljoin(base, url)
-
-    def follow(self, target, callback=None, **kw):
-        from .spider import Request
-        if isinstance(target, Selector):
-            target = target.attr("href") or target.text
-        if target is None:
-            raise ValueError("follow() got nothing to follow")
-        return Request(self.urljoin(str(target)), callback=callback, **kw)
-
-    def selector(self):
-        if self._sel is None:
-            self._sel = Selector(content=self.text, url=self.url, status=self.status,
-                                 headers=self.headers)
-        return self._sel
-
-    def css(self, *args, **kwargs):
-        return self.selector().css(*args, **kwargs)
-
-    def css_first(self, *args, **kwargs):
-        return self.selector().css_first(*args, **kwargs)
-
-    def xpath(self, *args, **kwargs):
-        return self.selector().xpath(*args, **kwargs)
-
-    def find_by_text(self, *args, **kwargs):
-        return self.selector().find_by_text(*args, **kwargs)
-
-    def find_similar(self, *args, **kwargs):
-        return self.selector().find_similar(*args, **kwargs)
-
-    def re(self, *args, **kwargs):
-        return self.selector().re(*args, **kwargs)
-
-    def re_first(self, *args, **kwargs):
-        return self.selector().re_first(*args, **kwargs)
-
-    def save(self, *args, **kwargs):
-        return self.selector().save(*args, **kwargs)
-
-    def jsonld(self):
-        return self.selector().jsonld()
-
-    def meta_tags(self):
-        return self.selector().meta_tags()
-
-    def links(self, **kwargs):
-        return self.selector().links(**kwargs)
-
-    def images(self, **kwargs):
-        return self.selector().images(**kwargs)
-
-    def tables(self):
-        return self.selector().tables()
-
-    def markdown(self, *args, **kwargs):
-        return self.selector().markdown(*args, **kwargs)
-
-    def extract(self, fields, **kwargs):
-        return self.selector().extract(fields, **kwargs)
-
-    def json(self):
-        return _json.loads(self.text)
-
-    def __repr__(self):
-        tag = " (cache)" if self.from_cache else ""
-        return "<Response %s %s%s>" % (self.status, self.url, tag)
-
-
-class HTTPStatusError(Exception):
-    def __init__(self, response):
-        self.response = response
-        super().__init__("HTTP %s for %s" % (response.status, response.url))
+def _url_with_params(url, params):
+    if not params:
+        return url
+    parts = urlsplit(url)
+    encoded = urlencode(params, doseq=True)
+    query = "&".join(part for part in (parts.query, encoded) if part)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
 
 
 def _pick(sequence, counter, mode):
@@ -1322,32 +135,82 @@ def _pick(sequence, counter, mode):
     return sequence[counter % len(sequence)]
 
 
+def _proxy_from_env(scheme):
+    for variable in ("%s_proxy" % scheme.upper(), "%s_proxy" % scheme,
+                     "ALL_PROXY", "all_proxy"):
+        value = os.environ.get(variable)
+        if value:
+            return value
+    return None
+
+
+def _no_proxy_matches(url):
+    raw = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+    entries = [e.strip().lower().lstrip(".") for e in raw.split(",") if e.strip()]
+    if not entries:
+        return False
+    host = (urlsplit(url).hostname or "").lower()
+    return any(host == e or host.endswith("." + e) for e in entries)
+
+
+def _custom_profile(base: Profile, ja3=None, akamai=None, extra_fp=None) -> Profile:
+    """Build a one-request Profile from ja3/akamai/extra_fp overrides.
+
+    ja3/akamai produce live engine objects (a hello template, an h2 spec)
+    stored directly on the Profile; the native engines and the OpenSSL
+    fallback both accept them.
+    """
+    import dataclasses
+    updates = {}
+    if ja3:
+        from ._tls import template_from_ja3
+        updates["tls_template"] = template_from_ja3(ja3)
+    if akamai:
+        from ._h2 import spec_from_akamai
+        updates["h2_spec"] = spec_from_akamai(akamai)
+    if extra_fp:
+        ciphers = list(extra_fp.get("tls_cipher_suites") or [])
+        if ciphers:
+            updates["ciphers"] = list(ciphers)
+        curve = extra_fp.get("tls_curves")
+        if isinstance(curve, (list, tuple)) and curve:
+            updates["curve"] = str(curve[-1])
+    if not updates:
+        return base
+    updates["name"] = "%s*" % base.name
+    return dataclasses.replace(base, **updates)
+
+
 class Session:
-    """Reusable ordered HTTP session with TLS/profile and proxy rotation.
+    """Reusable HTTP session with fingerprint profiles and proxy rotation.
 
-    ``profile`` accepts a name from ``PROFILES`` or a custom ``Profile``.
-    Supplying ``profiles`` creates a rotation pool; retries advance both the
-    profile and proxy pools.  ``rotate`` may be ``"sequence"`` or ``"random"``.
+    ``profile`` accepts any impersonate target name (see
+    ``curl_reap.tls.FINGERPRINTS``) or a custom ``Profile``.  ``profiles``
+    creates a rotation pool; ``rotate`` is ``"sequence"`` or ``"random"``;
+    ``sticky=True`` pins one profile and one proxy for the session's life.
+    ``tls`` selects the backend: ``"auto"`` (native TLS 1.3 engine when the
+    profile has a captured template, OpenSSL fallback), ``"native"`` or
+    ``"openssl"``.  ``http2`` (default True) offers HTTP/2 through ALPN and
+    falls back to HTTP/1.1 per connection; ``http_version`` overrides
+    explicitly ("v1", "v2", "v2tls", "v2_prior_knowledge").
 
-    ``sticky=True`` pins one profile and one proxy for the session's whole
-    life (picked at construction); sticky sessions never block-rotate.
-    ``url_policy`` is an optional callable invoked with every outgoing URL -
-    the initial request URL (params applied, cache lookups included) and
-    each redirect hop - before any socket is touched; it must return a
-    truthy value to allow the request, and a falsy one raises
-    :class:`URLPolicyError`. It is the seam used to confine a session to an
-    allowlisted set of origins.
+    ``url_policy`` is a callable invoked with every outgoing URL (initial
+    request and each redirect hop) before any socket is touched; returning
+    falsy raises :class:`URLPolicyError`.
     """
 
     def __init__(self, profile="chrome", headers=None, timeout=30, retries=2,
                  proxy=None, rotate=None, profiles=None, retry_policy=None,
                  cache=None, on_response=None, block_rotations=None, verify=True,
-                 allow_redirects=True, max_redirects=10, impersonate=None,
-                 http2=False, sticky=False, url_policy=None):
+                 allow_redirects=True, max_redirects=30, impersonate=None,
+                 http2=True, sticky=False, url_policy=None, tls="auto",
+                 max_body_bytes=_DEFAULT_MAX_BODY, interface=None, debug=False,
+                 trust_env=True, cert=None, proxies=None, http_version=None):
         if rotate not in (None, "sequence", "random"):
             raise ValueError("rotate must be None, 'sequence', or 'random'")
+        if tls not in ("auto", "native", "openssl"):
+            raise ValueError("tls must be 'auto', 'native' or 'openssl'")
         if impersonate is not None:
-            # Versioned-target alias: Session(impersonate="chrome124")
             profile = impersonate
         self.profile = resolve_profile(profile)
         if profiles is None:
@@ -1363,24 +226,29 @@ class Session:
         self.cache = cache
         self.on_response = on_response
         self.verify = verify
+        self.cert = cert
         self.allow_redirects = allow_redirects
         self.max_redirects = max_redirects
-        self._headers = tuple(_header_items(headers))
+        self._headers = tuple(_header_items_public(headers))
         self.cookies = CookieJar()
         self.http2 = bool(http2)
+        if http_version is None:
+            http_version = "v2" if self.http2 else "v1"
+        allowed = ("v1", "v2", "v2tls", "v2_prior_knowledge", "v3", "v3only")
+        if http_version not in allowed:
+            raise ValueError("http_version must be one of %s" % (", ".join(allowed)))
+        if http_version in ("v3", "v3only"):
+            raise NotImplementedError("HTTP/3 (QUIC) is not implemented")
+        self.http_version = http_version
         self.sticky = bool(sticky)
         self.url_policy = url_policy
+        self.max_body_bytes = int(max_body_bytes)
+        self.debug = bool(debug)
+        self.trust_env = bool(trust_env)
         self._counter = 0
         self._counter_lock = threading.Lock()
-        self._transport = _Transport(http2=http2)
-        if proxy is None:
-            self._proxy_pool = ()
-        elif isinstance(proxy, str):
-            self._proxy_pool = (proxy,)
-        else:
-            self._proxy_pool = tuple(proxy)
-            if not self._proxy_pool:
-                raise ValueError("proxy rotation list must not be empty")
+        self._transport = _Transport(tls=tls, interface=interface)
+        self._proxy_pool = self._build_proxy_pool(proxy, proxies)
         for item in self._proxy_pool:
             if not isinstance(item, str) or not item:
                 raise TypeError("proxy entries must be non-empty strings")
@@ -1392,19 +260,54 @@ class Session:
         self._sticky_route = (self.profiles[0],
                               self._proxy_pool[0] if self._proxy_pool else None)
 
+    @staticmethod
+    def _build_proxy_pool(proxy, proxies):
+        """Merge ``proxy`` (str or list) and ``proxies`` (dict) into one pool."""
+        pool = []
+        if proxy is not None:
+            if isinstance(proxy, str):
+                pool.append(proxy)
+            else:
+                pool.extend(proxy)
+                if not pool:
+                    raise ValueError("proxy rotation list must not be empty")
+        if proxies:
+            if isinstance(proxies, str):
+                proxies = {"all": proxies}
+            # curl_cffi key order: scheme-specific wins over 'all'
+            for key in ("https", "http", "all://", "all"):
+                value = proxies.get(key)
+                if value and value not in pool:
+                    pool.append(value)
+        return tuple(pool)
+
     @property
     def retries(self):
         return self.retry_policy.retries
 
-    def _route(self):
+    @property
+    def tls_backend(self):
+        return self._transport.tls_backend
+
+    def _route(self, url):
+        proxy = None
         if self.sticky:
-            return self._sticky_route
-        with self._counter_lock:
-            counter = self._counter
-            self._counter += 1
-        mode = self.rotate or "sequence"
-        profile = _pick(self.profiles, counter, mode) if len(self.profiles) > 1 else self.profiles[0]
-        proxy = (_pick(self._proxy_pool, counter, mode) if self._proxy_pool else None)
+            profile = self._sticky_route[0]
+            proxy = self._sticky_route[1]
+        else:
+            with self._counter_lock:
+                counter = self._counter
+                self._counter += 1
+            mode = self.rotate or "sequence"
+            profile = self.profiles[0]
+            if len(self.profiles) > 1:
+                profile = _pick(self.profiles, counter, mode)
+            if self._proxy_pool:
+                proxy = _pick(self._proxy_pool, counter, mode)
+        if proxy is None and self.trust_env and url is not None:
+            scheme = urlsplit(url).scheme.lower()
+            if scheme in ("http", "https") and not _no_proxy_matches(url):
+                proxy = _proxy_from_env(scheme)
         return profile, proxy
 
     def request(self, method, url, **kwargs):
@@ -1422,25 +325,58 @@ class Session:
         params = kwargs.pop("params", None)
         data = kwargs.pop("data", None)
         json_data = kwargs.pop("json", None)
+        files = kwargs.pop("files", None)
         request_proxy = kwargs.pop("proxy", None)
+        proxies = kwargs.pop("proxies", None)
+        proxy_auth = kwargs.pop("proxy_auth", None)
         request_profile = kwargs.pop("profile", None)
         request_impersonate = kwargs.pop("impersonate", None)
+        ja3 = kwargs.pop("ja3", None)
+        akamai = kwargs.pop("akamai", None)
+        extra_fp = kwargs.pop("extra_fp", None)
+        perk = kwargs.pop("perk", None)
+        if perk is not None:
+            warnings.warn("perk= is accepted and ignored (post-quantum key share "
+                          "negotiation is automatic)", stacklevel=3)
+        for ignored in _IGNORED_KWARGS:
+            if kwargs.pop(ignored, None) is not None:
+                _warn_once(ignored)
+        cookies = kwargs.pop("cookies", None)
+        verify = kwargs.pop("verify", self.verify)
+        cert = kwargs.pop("cert", self.cert)
+        auth = kwargs.pop("auth", None)
+        allow_redirects = kwargs.pop("allow_redirects", self.allow_redirects)
+        max_redirects = kwargs.pop("max_redirects", self.max_redirects)
+        stream = kwargs.pop("stream", False)
+        max_body = kwargs.pop("max_body_bytes", self.max_body_bytes)
+        interface = kwargs.pop("interface", None)
+        debug = kwargs.pop("debug", self.debug)
+        http_version = kwargs.pop("http_version", self.http_version)
+        if kwargs:
+            name = next(iter(kwargs))
+            raise TypeError("unexpected request keyword argument %r" % name)
         if request_impersonate is not None:
             if (request_profile is not None and
                     resolve_profile(request_impersonate) != resolve_profile(request_profile)):
                 raise ValueError("profile and impersonate disagree; pass one")
             request_profile = request_impersonate
-        verify = kwargs.pop("verify", self.verify)
-        auth = kwargs.pop("auth", None)
-        allow_redirects = kwargs.pop("allow_redirects", self.allow_redirects)
-        max_redirects = kwargs.pop("max_redirects", self.max_redirects)
-        if kwargs:
-            name = next(iter(kwargs))
-            raise TypeError("unexpected request keyword argument %r" % name)
         if request_profile is not None:
             request_profile = resolve_profile(request_profile)
-        body, content_type = _encode_body(data=data, json=json_data)
-        combined_headers = tuple(_merge_headers(self._headers, request_headers))
+        if ja3 or akamai or extra_fp:
+            request_profile = _custom_profile(
+                request_profile or self.profile, ja3=ja3, akamai=akamai, extra_fp=extra_fp)
+
+        if files:
+            from .multipart import encode_multipart
+            if data is not None and json_data is not None:
+                raise ValueError("data, json and files are mutually exclusive")
+            if json_data is not None:
+                raise ValueError("json and files are mutually exclusive")
+            body, content_type = encode_multipart(data=data, files=files)
+        else:
+            body, content_type = _encode_body(data=data, json=json_data)
+
+        combined_headers = list(_merge_headers_public(self._headers, request_headers))
         request_url = _url_with_params(url, params)
         if self.url_policy is not None and not self.url_policy(request_url):
             raise URLPolicyError("url_policy rejected %s" % request_url)
@@ -1448,6 +384,15 @@ class Session:
             if not isinstance(sink, str):
                 raise TypeError("sink must be a file path string")
             no_cache = True
+        if stream:
+            no_cache = True
+
+        if cookies:
+            extra_cookie = self._extra_cookie_header(cookies)
+            if extra_cookie:
+                combined_headers = [(n, v) for n, v in combined_headers
+                                    if n.lower() != "cookie"]
+                combined_headers.append(("Cookie", extra_cookie))
 
         cacheable = (self.cache is not None and not no_cache and
                      method.upper() == "GET" and self.cache.accepts(method))
@@ -1467,35 +412,50 @@ class Session:
                 if stale.get("last_modified"):
                     conditional.append(("If-Modified-Since", stale["last_modified"]))
                 if conditional:
-                    combined_headers = tuple(_merge_headers(combined_headers, conditional))
+                    combined_headers = _merge_headers_public(
+                        combined_headers, conditional)
                     revalidate = stale
 
         attempt = 0
         rotations = 0
         method_allowed = policy.allows_method(method)
+        effective_proxy_pool = self._proxy_pool
+        if proxies or (request_proxy is not None):
+            effective_proxy_pool = (request_proxy,) if request_proxy is not None else \
+                self._build_proxy_pool(None, proxies)
         while True:
-            selected_profile, selected_proxy = self._route()
+            selected_profile, selected_proxy = self._route(request_url)
             if request_profile is not None:
                 selected_profile = request_profile
             if request_proxy is not None:
                 if not isinstance(request_proxy, str):
                     raise TypeError("per-request proxy must be a string")
                 selected_proxy = request_proxy
-            started = time.time()
+            elif proxies and not self._proxy_pool:
+                selected_proxy = effective_proxy_pool[0] if effective_proxy_pool else None
+            if selected_proxy and proxy_auth is not None:
+                selected_proxy = self._inject_proxy_auth(selected_proxy, proxy_auth)
+            started = time.monotonic()
             try:
                 raw = self._transport.request(
-                    method, request_url, selected_profile, headers=combined_headers,
+                    method, request_url, selected_profile,
+                    headers=combined_headers or None,
                     body=body, content_type=content_type, timeout=timeout,
                     proxy=selected_proxy, verify=verify, auth=auth,
                     allow_redirects=allow_redirects, max_redirects=max_redirects,
-                    cookie_jar=self.cookies, sink=sink, url_policy=self.url_policy)
+                    cookie_jar=self.cookies, sink=sink, url_policy=self.url_policy,
+                    stream=stream, max_body=max_body, cert=cert,
+                    http_version=http_version, interface=interface, debug=debug)
+                raw.request = {
+                    "method": method.upper(), "url": request_url,
+                    "headers": list(combined_headers)}
             except (TransportError, OSError, ssl.SSLError):
                 if not method_allowed or attempt >= policy.retries:
                     raise
                 time.sleep(policy.delay(attempt))
                 attempt += 1
                 continue
-            response = Response(raw, meta=meta, elapsed=time.time() - started)
+            response = Response(raw, meta=meta, elapsed=time.monotonic() - started)
 
             if revalidate is not None and response.status == 304:
                 self.cache.touch(method, url, params)
@@ -1505,7 +465,7 @@ class Session:
                 if self.on_response:
                     self.on_response(cached)
                 return cached
-            if (response.status in _IP_BLOCK_STATUSES and self._proxy_pool and
+            if (response.status in _IP_BLOCK_STATUSES and effective_proxy_pool and
                     not self.sticky and method_allowed and
                     request_proxy is None and rotations < self.block_rotations):
                 rotations += 1
@@ -1516,14 +476,44 @@ class Session:
                 time.sleep(policy.delay(attempt, response.headers.get("Retry-After")))
                 attempt += 1
                 continue
-            if cacheable and response.ok:
+            if cacheable and response.ok and not stream:
                 self.cache.set(method, url, params, response)
-            if sink is not None:
+            if sink is not None and response.ok and raw.saved_bytes:
                 response.meta = dict(response.meta or {},
                                      saved_to=sink, bytes=raw.saved_bytes)
             if self.on_response:
                 self.on_response(response)
             return response
+
+    # -- helpers ---------------------------------------------------------------
+    @staticmethod
+    def _extra_cookie_header(cookies):
+        """Per-request cookies (dict, pairs or ``name=value`` strings) as a header."""
+        if cookies is None:
+            return None
+        if isinstance(cookies, dict):
+            pairs = list(cookies.items())
+        else:
+            pairs = []
+            for item in cookies:
+                if isinstance(item, str):
+                    name, _, value = item.partition("=")
+                    pairs.append((name.strip(), value.strip()))
+                else:
+                    pairs.append((item[0], item[1]))
+        return "; ".join("%s=%s" % (n, v) for n, v in pairs) or None
+
+    @staticmethod
+    def _inject_proxy_auth(proxy, proxy_auth):
+        from urllib.parse import urlsplit as us, urlunsplit as uus
+        parts = us(proxy if "://" in proxy else "http://" + proxy)
+        if proxy_auth is None or parts.username is not None:
+            return proxy
+        user, _, password = proxy_auth.partition(":")
+        from urllib.parse import quote
+        netloc = "%s:%s@%s" % (quote(user, safe=""), quote(password, safe=""),
+                               parts.netloc)
+        return uus((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
     def get(self, url, **kwargs):
         return self.request("GET", url, **kwargs)
@@ -1537,20 +527,31 @@ class Session:
     def put(self, url, **kwargs):
         return self.request("PUT", url, **kwargs)
 
+    def patch(self, url, **kwargs):
+        return self.request("PATCH", url, **kwargs)
+
     def delete(self, url, **kwargs):
         return self.request("DELETE", url, **kwargs)
 
-    def download(self, url, path, **kwargs):
-        """Stream a URL straight to ``path`` on disk.
+    def options(self, url, **kwargs):
+        return self.request("OPTIONS", url, **kwargs)
 
-        Bytes land in the file as they arrive off the wire (constant memory,
-        whatever the size), with gzip/deflate transport compression decoded
-        transparently. Retries and redirects still apply; a retry restarts
-        the file cleanly. The returned ``Response`` carries
-        ``meta["saved_to"]`` and ``meta["bytes"]``.
+    def download(self, url, path, **kwargs):
+        """Stream a URL straight to ``path`` (constant memory).
+
+        Bytes land in the file as they arrive, with transport compression
+        decoded on the fly. The file is committed atomically and only for a
+        2xx response: redirect and error bodies never touch the sink. The
+        returned ``Response`` carries ``meta["saved_to"]`` and
+        ``meta["bytes"]`` when the file was written.
         """
         kwargs.setdefault("timeout", self.timeout)
         return self.request("GET", url, sink=str(path), **kwargs)
+
+    def ws_connect(self, url, **kwargs):
+        """Open a WebSocket (see :mod:`curl_reap.websocket`)."""
+        from .websocket import WebSocket
+        return WebSocket.connect(url, session=self, **kwargs)
 
     def close(self):
         self._transport.close()
@@ -1560,6 +561,16 @@ class Session:
 
     def __exit__(self, *exc):
         self.close()
+
+
+def _header_items_public(headers):
+    from .transport import _header_items
+    return _header_items(headers)
+
+
+def _merge_headers_public(*sources):
+    from .transport import _merge_headers
+    return _merge_headers(*sources)
 
 
 _default = None
@@ -1594,7 +605,8 @@ def download(url, path, **kwargs):
 
 
 __all__ = [
-    "Session", "Response", "RetryPolicy", "HTTPStatusError", "TransportError",
-    "URLPolicyError", "CookieJar", "detect_encoding", "retry_after_seconds",
+    "Session", "Response", "RetryPolicy", "HTTPStatusError", "HTTPError",
+    "TransportError", "URLPolicyError", "CookieJar", "CaseInsensitiveHeaders",
+    "Headers", "detect_encoding", "retry_after_seconds",
     "get", "post", "fetch", "download",
 ]
