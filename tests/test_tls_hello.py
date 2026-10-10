@@ -57,7 +57,11 @@ def render(name, **kw):
 @pytest.fixture(scope="module")
 def all_names():
     names = template_names()
-    assert len(names) == 24
+    captured = sorted(
+        f[:-5] for f in os.listdir(os.path.join(ROOT, "tools", "hello_templates"))
+        if f.endswith(".json") and not f.startswith("peet_")
+    )
+    assert sorted(names) == captured, "generated templates and captures must stay in lockstep"
     return names
 
 
@@ -77,11 +81,11 @@ def test_unknown_template_raises():
 def padded_variant(ja4_r):
     """JA4 and ja4_r of the same hello with a padding extension added.
 
-    BoringSSL pads a 256..511 byte hello to 512 bytes. chrome_android is the
-    one captured target whose hello crosses that line: with the smallest ECH
-    payload (144 bytes) curl_cffi itself sends padding and reports
-    t13d1517h2_8daaf6152771_b1ff8ab2d16f (verified with 16 local captures of
-    curl_cffi 0.16.3, 7 of which padded), so the engine must do the same.
+    BoringSSL pads a 256..511 byte hello to 512 bytes. Any target whose
+    captured hello length straddles the line may or may not send the
+    padding extension on a given connection (curl_cffi's own captures of
+    chrome119/chrome120 show both shapes), so the engine must do the same
+    and the fingerprint check accepts either form.
     """
     a, ciphers, rest = ja4_r.split("_", 2)
     exts, _, sigs = rest.partition("_")
@@ -106,9 +110,9 @@ def test_fingerprints_match_capture(name):
         fp = fc.fingerprints(parsed)
         padded = any(e["type"] == EXT_PADDING for e in parsed["extensions"]) and doc.get("padding_length") is None
         if padded:
-            assert name == "chrome_android", "only chrome_android crosses the 512 byte line"
+            assert hl["min"] < 512, (name, "padded a hello that never crosses the 512 byte line", hl)
             assert len(hello) == 512
-            assert fp["ja4"] == padded_ja4 and fp["ja4_r"] == padded_ja4_r
+            assert fp["ja4"] == padded_ja4 and fp["ja4_r"] == padded_ja4_r, name
             continue
         assert fp["ja4"] == exp["ja4"], name
         assert fp["ja4_r"] == exp["ja4_r"], name
@@ -122,11 +126,15 @@ def test_fingerprints_match_capture(name):
         assert seen_lengths == {hl["min"]}, (name, seen_lengths, hl)
         assert hl["fixed"] or hl["min"] == hl["max"]
     else:
-        # The ECH payload is 144, 176, 208 or 240 bytes; three captures saw
-        # only some of those sizes, so the lengths must sit on that lattice.
+        # The ECH payload is 144, 176, 208 or 240 bytes; captures saw only
+        # some of those sizes (and padded samples skew hl["min"] down to 508),
+        # so the unpadded lengths must sit on the captured unpadded lattice.
+        unpadded = [c["handshake_length"] for c in doc["captures"]
+                    if "0015" not in c.get("extension_order", [])[-1:]]
+        base = min(unpadded) if unpadded else hl["min"]
         for length in seen_lengths:
-            assert (length - hl["min"]) % 32 == 0, (name, length, hl)
-            assert hl["min"] - 96 <= length <= hl["max"] + 96, (name, length, hl)
+            assert (length - base) % 32 == 0, (name, length, base, hl)
+            assert base - 96 <= length <= hl["max"] + 96, (name, length, hl)
 
 
 @pytest.mark.parametrize("name", template_names())
@@ -165,12 +173,13 @@ def test_extension_order_rules(name):
         parsed = parse_client_hello(render(name))
         types = tuple("GREASE" if is_grease(t) else "%04x" % t for t, _ in parsed["extensions"])
         if doc.get("padding_length") is None and types[-1] == "0015":
-            types = types[:-1]  # the BoringSSL padding on a small chrome_android hello
+            types = types[:-1]  # BoringSSL pads any 256..511 byte hello to 512
         orders.add(types)
         prefix = tuple(doc["extension_fixed_prefix"])
         suffix = tuple(doc["extension_fixed_suffix"])
         assert types[:len(prefix)] == prefix
-        assert types[-len(suffix):] == suffix
+        if suffix:
+            assert types[-len(suffix):] == suffix
         assert sorted(types) == sorted(doc["extensions"][i]["type"] for i in range(len(doc["extensions"])))
     if tpl.permute_extensions:
         assert len(orders) > 1, "Chrome must permute the middle extensions per connection"
@@ -362,7 +371,7 @@ def test_template_loader_fields():
     assert tpl.alps_codepoint == 0x44CD and tpl.alps_value == bytes.fromhex("0003026832") and tpl.alps_protocols == ("h2",)
     assert tpl.key_share_groups == [GREASE, 0x11EC, 29]
     assert tpl.psk_modes == [1] and tpl.compress_certificate == [2]
-    assert tpl.ech["payload_lengths"] == [144, 176, 208, 240]
+    assert tpl.ech["payload_lengths"] == [144, 176, 208]  # exactly the sizes this target was captured sending
     ff = template("firefox")
     assert not ff.grease and not ff.permute_extensions
     assert ff.record_size_limit == 16385 and ff.delegated_credentials == [0x0403, 0x0503, 0x0603, 0x0203]

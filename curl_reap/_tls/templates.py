@@ -211,8 +211,10 @@ def template_from_dict(data: Dict[str, Any], name: Optional[str] = None) -> Hell
             "kdf_id": int(e.get("kdf_id", "0001"), 16) if isinstance(e.get("kdf_id"), str) else int(e.get("kdf_id", 1)),
             "aead_id": int(e.get("aead_id", "0001"), 16) if isinstance(e.get("aead_id"), str) else int(e.get("aead_id", 1)),
             "enc_len": int(e.get("enc_len", 32)),
-            # BoringSSL: 32 * random(4..7) + AEAD overhead (16).
-            "payload_lengths": [32 * k + 16 for k in range(4, 8)],
+            # BoringSSL: 32 * random(4..7) + AEAD overhead (16).  Only the
+            # sizes this target was actually captured sending: chrome
+            # android, for one, never sends the 144 byte payload.
+            "payload_lengths": sorted(int(n) for n in e.get("payload_len_seen") or []) or [32 * k + 16 for k in range(4, 8)],
         }
     delegated = data.get("delegated_credentials")
     expected = {
