@@ -169,7 +169,6 @@ class Response:
         self.from_cache = from_cache
         self.request = getattr(raw, "request", None)
         self.default_encoding = "utf-8"
-        self._fix_garbled_text()
 
     # -- status ---------------------------------------------------------------
     @property

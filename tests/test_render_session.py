@@ -215,7 +215,7 @@ def test_redirect_final_url_and_elapsed_meta(pw):
         r = s.goto("http://a/redir")
         assert r.url == "http://a/landed"
         assert r.meta["rendered"] is True
-        assert r.elapsed >= 0
+        assert r.elapsed.total_seconds() >= 0
 
 
 def test_cookie_continuity_via_one_context(pw):

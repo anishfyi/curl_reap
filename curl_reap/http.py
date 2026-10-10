@@ -289,7 +289,7 @@ class Session:
     def tls_backend(self):
         return self._transport.tls_backend
 
-    def _route(self, url):
+    def _route(self, url=None):
         proxy = None
         if self.sticky:
             profile = self._sticky_route[0]

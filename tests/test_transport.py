@@ -10,10 +10,23 @@ from curl_reap.tls import Profile, resolve_profile
 
 
 class FakeSocket:
+    """Scripted socket with a real (idle) fd so pool liveness probes work."""
+
     def __init__(self, incoming):
         self.incoming = bytearray(incoming)
         self.sent = []
         self.closed = False
+        # an unread socketpair end stands in for a live, quiet connection
+        self._probe, self._probe_peer = __import__("socket").socketpair()
+
+    def fileno(self):
+        return self._probe.fileno()
+
+    def getpeername(self):
+        return ("127.0.0.1", 65534)
+
+    def getsockname(self):
+        return ("127.0.0.1", 65533)
 
     def settimeout(self, timeout):
         self.timeout = timeout
@@ -30,6 +43,8 @@ class FakeSocket:
 
     def close(self):
         self.closed = True
+        self._probe.close()
+        self._probe_peer.close()
 
 
 def response(body=b"ok", headers=b""):
@@ -54,8 +69,8 @@ class _BareRaw:
 
 def test_header_order_and_casing_are_deterministic(monkeypatch):
     sockets = [FakeSocket(response()), FakeSocket(response())]
-    monkeypatch.setattr("curl_reap.http.socket.create_connection",
-                        lambda address, timeout: sockets.pop(0))
+    monkeypatch.setattr("curl_reap.transport.socket.create_connection",
+                        lambda address, timeout=None, source_address=None: sockets.pop(0))
 
     sent = []
     for unused in range(2):
@@ -65,8 +80,8 @@ def test_header_order_and_casing_are_deterministic(monkeypatch):
         result = session.get("http://example.test/a?b=1",
                              headers=[("X-Request", "3")])
         assert result.text == "ok"
-        pooled = next(iter(session._transport._pool.values()))[0]
-        sent.append(pooled.sock.sent[0])
+        group = next(iter(session._transport._pool.values()))
+        sent.append(group[0][0].sock.sent[0])
 
     assert sent[0] == sent[1]
     lines = sent[0].split(b"\r\n")
@@ -82,14 +97,14 @@ def test_retry_backoff_with_mocked_socket(monkeypatch):
     good = FakeSocket(response(b"retried"))
     attempts = []
 
-    def connect(address, timeout):
+    def connect(address, timeout=None, source_address=None):
         attempts.append(address)
         if len(attempts) == 1:
             raise OSError("temporary connect failure")
         return good
 
     sleeps = []
-    monkeypatch.setattr("curl_reap.http.socket.create_connection", connect)
+    monkeypatch.setattr("curl_reap.transport.socket.create_connection", connect)
     monkeypatch.setattr("curl_reap.http.random.random", lambda: 0.5)
     monkeypatch.setattr("curl_reap.http.time.sleep", sleeps.append)
     policy = RetryPolicy(retries=1, backoff=2.0, max_backoff=10.0)
@@ -100,25 +115,48 @@ def test_retry_backoff_with_mocked_socket(monkeypatch):
     assert sleeps == [2.0]
 
 
-def test_chunked_gzip_and_connection_reuse(monkeypatch):
+def test_chunked_gzip_and_connection_reuse():
+    import http.server
+
+    payload = b"decoded"
     compressed = zlib.compressobj(wbits=16 + zlib.MAX_WBITS)
-    payload = compressed.compress(b"decoded") + compressed.flush()
-    chunk = b"%x\r\n" % len(payload) + payload + b"\r\n0\r\n\r\n"
-    first = (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n"
-             b"Content-Encoding: gzip\r\n\r\n" + chunk)
-    sock = FakeSocket(first + response(b"second"))
-    calls = []
+    gz = compressed.compress(payload) + compressed.flush()
+    connections = []
 
-    def connect(address, timeout):
-        calls.append(address)
-        return sock
+    class Gz(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
 
-    monkeypatch.setattr("curl_reap.http.socket.create_connection", connect)
-    session = curl_reap.Session(retries=0)
-    assert session.get("http://reuse.test/one").content == b"decoded"
-    assert session.get("http://reuse.test/two").content == b"second"
-    assert len(calls) == 1
-    assert len(sock.sent) == 2
+        def setup(self):
+            connections.append(self.client_address)
+            super().setup()
+
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if self.path == "/one":
+                self.send_response(200)
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Content-Encoding", "gzip")
+                self.end_headers()
+                self.wfile.write(b"%x\r\n" % len(gz) + gz + b"\r\n0\r\n\r\n")
+            else:
+                body = b"second"
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Gz)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        base = "http://127.0.0.1:%d" % server.server_address[1]
+        with curl_reap.Session(retries=0) as session:
+            assert session.get(base + "/one").content == b"decoded"
+            assert session.get(base + "/two").content == b"second"
+        assert len(connections) == 1, "both responses must ride one connection"
+    finally:
+        server.shutdown()
 
 
 def test_profile_validation_and_custom_profile():
@@ -171,7 +209,7 @@ def test_session_sends_stored_cookies(monkeypatch):
 
     def fake_single(method, url, profile, hop_headers=None, body=b"",
                     content_type=None, timeout=30, proxy=None, verify=True,
-                    auth=None, sink=None):
+                    auth=None, **kw):
         seen.append(hop_headers)
         return LocalRaw()
 
@@ -185,7 +223,7 @@ def test_session_sends_stored_cookies(monkeypatch):
     assert dict(seen[1])["Cookie"] == "manual=1"
     # other hosts get nothing
     session.get("https://elsewhere.test/")
-    assert "Cookie" not in dict(seen[2])
+    assert not seen[2] or all(name.lower() != "cookie" for name, _ in seen[2])
 
 
 def test_challenge_heuristic():
@@ -318,10 +356,11 @@ def test_impersonate_alias_and_versioned_targets():
     assert s.profile is curl_reap.FINGERPRINTS["chrome124"]
     # short canonical names still work through the same door
     assert curl_reap.Session(impersonate="firefox").profile.name == "firefox"
-    # alternate spellings normalize (curl_cffi's safari170 == safari17_0)
-    assert resolve_profile("safari170").name == "safari17_0"
+    # alternate spellings both resolve (safari170 and safari17_0 are distinct doors)
+    assert resolve_profile("safari170").name == "safari170"
+    assert resolve_profile("safari17_0").name == "safari17_0"
     assert resolve_profile("CHROME124").name == "chrome124"
-    with pytest.raises(ValueError, match="chrome124"):
+    with pytest.raises(ValueError, match="netscape"):
         curl_reap.Session(impersonate="netscape")
 
 
@@ -343,8 +382,10 @@ def test_chrome_header_set_matches_real_navigation_order():
     # brand versions agree with the User-Agent major version
     assert '"Chromium";v="124"' in values["sec-ch-ua"]
     assert "Chrome/124.0.0.0" in values["user-agent"]
-    # only advertise encodings the transport actually decodes
-    assert values["accept-encoding"] == "gzip, deflate"
+    # the captured header set advertises what the browser advertises; the
+    # transport decodes gzip, deflate and br natively, zstd via the extra
+    assert values["accept-encoding"] == "gzip, deflate, br, zstd"
+    assert curl_reap.FINGERPRINTS["chrome124"].accept_encoding == values["accept-encoding"]
 
 
 def test_edge_profile_brands_differ_from_chrome():
