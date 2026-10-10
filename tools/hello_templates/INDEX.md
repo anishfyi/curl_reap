@@ -239,3 +239,41 @@ changes, `extension_fixed_prefix` / `extension_fixed_suffix`,
 `variable_fields`, `fixed_fields`, `fingerprints` (ja3, ja3_hash,
 ja3_hashes_seen, ja4, ja4_r, ja4_o, ja4_ro), `handshake_length`,
 `total_bytes`, `record_version`, per-run `captures`, and `peet_live`.
+
+## Additional targets (captured 2026-10-11)
+
+The remaining curl_cffi 0.16.3 names were captured the same way (3 runs
+each, SNI `tls.peet.ws` pinned to 127.0.0.1) so every name in curl_cffi's
+target list has a template. The 20 new concrete targets were checked once
+against https://tls.peet.ws/api/all with a 1 s gap between fetches (one
+fetch per target, shared with the HTTP/2 capture): JA4 and `ja4_r` match for
+all 20, JA3 matches for the 14 with a fixed extension order (chrome99,
+chrome100, chrome101, chrome104, chrome107, chrome99_android, edge99 and the
+seven Safari targets); chrome110 and later permute.
+
+| Target | JA4 | Extension order | Notes |
+| --- | --- | --- | --- |
+| edge99, chrome99, chrome100, chrome101, chrome104, chrome107, chrome99_android | `t13d1516h2_8daaf6152771_e5627efa2ab1` | fixed | Chromium 99 to 107 era: same hello as edge101 (x25519 only, old ALPS codepoint, padding to 508) |
+| chrome110, chrome116 | `t13d1516h2_8daaf6152771_e5627efa2ab1` | permuted | first permuting versions, still no post-quantum share |
+| chrome119, chrome120, chrome123, chrome131_android | `t13d1516h2_8daaf6152771_02713d6af862` | permuted | Kyber draft share on desktop; the Android target sends x25519 only |
+| chrome145 | `t13d1516h2_8daaf6152771_d8a2da3f94cd` | permuted | TLS-identical to chrome133a, chrome136, chrome142, chrome146 |
+| safari153 | `t13d2613h2_2802a3db6c62_845d286b0d67` | fixed | 26 ciphers (adds TLS 1.0 era suites), 13 extensions |
+| safari155, safari172_ios | `t13d2014h2_a09f3c656075_14788d8d241b` | fixed | same hello as safari170 |
+| safari180_ios, safari184_ios | `t13d2014h2_a09f3c656075_e42f34c56612` | fixed | same hello as safari180 and safari184 |
+| safari260_ios | `t13d2015h2_a09f3c656075_c258b721e490` | fixed | same hello as safari_ios |
+
+Alias names captured under their own name and verified byte for byte
+against their target (ciphers, extension set and order, groups, signature
+algorithms, ALPN, JA4, `ja4_r`), recorded as `alias_of` in the JSON:
+`safari_beta` and `safari15_3`, `safari15_5`, `safari17_0`,
+`safari17_2_ios`, `safari18_0`, `safari18_0_ios`, `safari_ios_beta`, `tor`
+(= `safari2601`, `safari153`, `safari155`, `safari170`, `safari172_ios`,
+`safari180`, `safari180_ios`, `safari260_ios`, `tor145`). The four names
+curl_cffi's type hints list but its Python layer rejects (`safari18_4`,
+`safari18_4_ios`, `edge_99`, `edge_101`) have no capture of their own;
+`tools/gen_profiles.py` maps them to `safari184`, `safari184_ios`, `edge99`
+and `edge101`.
+
+Reproduce the additional captures:
+
+    .venv/bin/python tools/capture_clienthello.py edge99 chrome99 chrome100 chrome101 chrome104 chrome107 chrome110 chrome116 chrome119 chrome120 chrome123 chrome145 chrome99_android chrome131_android safari153 safari155 safari172_ios safari180_ios safari184_ios safari260_ios safari_beta safari_ios_beta safari15_3 safari15_5 safari17_0 safari17_2_ios safari18_0 safari18_0_ios tor --runs 3 --templates --verify-live
