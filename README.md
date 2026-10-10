@@ -54,7 +54,7 @@ print(page.jsonld())
 
 <p align="center">
   <a href="https://go.nodemaven.com/curlreapreadmeoct" title="NodeMaven: best proxy for web scraping and automation">
-    <img src="https://raw.githubusercontent.com/anishfyi/curl_reap/main/assets/sponsors/nodemaven-banner.jpg" alt="NodeMaven: best proxy for web scraping and automation with the highest quality IP" width="720">
+    <img src="https://velofy.co/images/sponsors/nodemaven-banner.webp" alt="NodeMaven: best proxy for web scraping and automation with the highest quality IP" width="720">
   </a>
 </p>
 
