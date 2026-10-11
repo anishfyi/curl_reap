@@ -7,6 +7,8 @@ same moment a first HTTP/2 request triggers the lazy import, the per-module
 import locks deadlock (``_DeadlockError``). The fix loads both engines during
 ``import curl_reap``, which the import system serializes.
 """
+import os
+import subprocess
 import sys
 
 import pytest
@@ -17,10 +19,16 @@ from curl_reap.exceptions import InvalidHeader
 
 
 def test_native_engines_load_with_package():
-    import curl_reap
-
-    assert "curl_reap._h2" in sys.modules
-    assert "curl_reap._tls" in sys.modules
+    # A fresh interpreter: in this process the imports at the top of this
+    # file (and earlier tests) already put the engines in sys.modules, which
+    # would make an in-process check pass even without the fix.
+    probe = ("import sys, curl_reap; "
+             "print('curl_reap._h2' in sys.modules, 'curl_reap._tls' in sys.modules)")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = {**os.environ, "PYTHONPATH": root + os.pathsep + os.environ.get("PYTHONPATH", "")}
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
+                         env=env, check=True).stdout.split()
+    assert out == ["True", "True"]
 
 
 def _fields(method="GET", path="/", headers=()):
