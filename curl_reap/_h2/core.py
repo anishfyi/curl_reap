@@ -26,6 +26,7 @@ one misbehaving stream never kills the connection.
 from __future__ import annotations
 
 import os
+import re
 import struct
 
 from hpack import Decoder as HpackDecoder
@@ -44,6 +45,14 @@ CONNECTION_SPECIFIC_HEADERS = frozenset((
 ))
 _TOKEN_CHARS = frozenset(b"!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyz")
 _METHOD_CHARS = _TOKEN_CHARS | frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+# Precompiled equivalents of the per-character membership scans above: the
+# frozensets stay as the specification, the regexes are what the hot request
+# path actually uses (a fullmatch/search in C beats a Python genexpr ~10x).
+_METHOD_RE = re.compile(rb"[!#$%&'*+\-.^_`|~0-9a-zA-Z]+")
+_TOKEN_RE = re.compile(rb"[!#$%&'*+\-.^_`|~0-9a-z]+")
+_FORBIDDEN_IN_PATH_RE = re.compile(rb"[\x00\x0a\x0d ]")
+_FORBIDDEN_IN_VALUE_RE = re.compile(rb"[\x00\x0a\x0d]")
 
 _DEFAULT_MAX_HEADER_LIST_SIZE = 1 << 20
 
@@ -212,7 +221,7 @@ def build_request_fields(spec, method, scheme, authority, path, headers):
     characters in values raise :class:`curl_reap.exceptions.InvalidHeader`.
     """
     method_b = _as_bytes(method).strip()
-    if not method_b or any(c not in _METHOD_CHARS for c in method_b):
+    if not _METHOD_RE.fullmatch(method_b):
         raise InvalidHeader("invalid HTTP method %r" % (method,))
     scheme_b = _as_bytes(scheme).strip().lower()
     if not scheme_b:
@@ -221,7 +230,7 @@ def build_request_fields(spec, method, scheme, authority, path, headers):
     if not authority_b:
         raise InvalidHeader("the request authority (host[:port]) is empty")
     path_b = _as_bytes(path).strip() or b"/"
-    if any(c in (0x00, 0x0A, 0x0D, 0x20) for c in path_b):
+    if _FORBIDDEN_IN_PATH_RE.search(path_b):
         raise InvalidHeader("invalid characters in request path %r" % (path,))
     pseudo = {
         "m": (b":method", method_b),
@@ -236,14 +245,14 @@ def build_request_fields(spec, method, scheme, authority, path, headers):
             raise InvalidHeader("empty header name")
         if name_b.startswith(b":"):
             raise InvalidHeader("pseudo header %r is built from the request line, not headers=" % (name,))
-        if any(c not in _TOKEN_CHARS for c in name_b):
+        if not _TOKEN_RE.fullmatch(name_b):
             raise InvalidHeader("invalid header name %r" % (name,))
         if name_b in CONNECTION_SPECIFIC_HEADERS:
             continue
         value_b = _as_bytes(value).strip(b" \t")
         if name_b == b"te" and value_b.lower() != b"trailers":
             continue
-        if any(c in (0x00, 0x0A, 0x0D) for c in value_b):
+        if _FORBIDDEN_IN_VALUE_RE.search(value_b):
             raise InvalidHeader("control characters in the value of header %r" % (name,))
         fields.append((name_b, value_b))
     return fields
