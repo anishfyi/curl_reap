@@ -104,6 +104,11 @@ class _Exchange(object):
     def handle(self, event):
         core = self.connection._core
         if isinstance(event, ConnectionTerminated):
+            if self.ended:
+                # The response already arrived in full (END_STREAM was seen
+                # earlier in this read). A GOAWAY after it ends the connection,
+                # not the exchange: keep the response, as curl and nghttp2 do.
+                return
             if event.last_stream_id < self.stream_id:
                 raise H2Error(
                     "server sent GOAWAY (%s) before processing stream %d"

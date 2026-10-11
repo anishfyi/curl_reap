@@ -616,6 +616,41 @@ def test_poll_sees_idle_goaway():
         assert not conn.alive
 
 
+def test_completed_response_survives_a_goaway_error_in_the_same_read():
+    # The response and an error GOAWAY arrive back to back (one flush). The
+    # stream already ended, so the response must be returned, not discarded.
+    # This is the race behind the old test_poll_sees_idle_goaway flake: the
+    # strict test server answered a late SETTINGS ACK with PROTOCOL_ERROR.
+    def handler(ctx, event):
+        if isinstance(event, StreamEnded):
+            ctx.respond(event.stream_id, 200, body=b"ok")
+            ctx.conn.close_connection(error_code=ErrorCodes.PROTOCOL_ERROR,
+                                      last_stream_id=event.stream_id)
+            ctx.closing = True
+
+    with H2TestServer(handler) as server:
+        conn = server.connect("chrome")
+        response = conn.request("GET", "https", "h", "/", [], deadline=time.monotonic() + 5)
+        assert response.status == 200 and response.body == b"ok"
+        deadline = time.monotonic() + 10
+        while conn.poll() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not conn.alive
+
+
+def test_goaway_error_before_the_response_still_raises():
+    def handler(ctx, event):
+        if isinstance(event, StreamEnded):
+            ctx.conn.close_connection(error_code=ErrorCodes.PROTOCOL_ERROR,
+                                      last_stream_id=event.stream_id)
+            ctx.closing = True
+
+    with H2TestServer(handler) as server:
+        conn = server.connect("chrome")
+        with pytest.raises(H2Error, match="PROTOCOL_ERROR"):
+            conn.request("GET", "https", "h", "/", [], deadline=time.monotonic() + 5)
+
+
 def test_invalid_headers_are_rejected_before_sending():
     with H2TestServer() as server:
         conn = server.connect("chrome")
