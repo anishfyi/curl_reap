@@ -21,6 +21,8 @@ class AutoThrottle:
         self.enabled = enabled
         self._latencies = []
         self._ok_streak = 0
+        self._next_slot = 0.0
+        self._cooldown_until = 0.0
         self._lock = threading.Lock()
 
     def observe(self, latency, status=None):
@@ -44,8 +46,36 @@ class AutoThrottle:
             else:
                 self.delay = min(self.max_delay, target_delay)
 
-    def wait(self):
+    def cooldown(self, seconds):
+        """Hold off queued requests until ``seconds`` from now have passed.
+
+        Used for server-driven back-off (Retry-After on 429/503): the value
+        is honored verbatim, not clamped to ``max_delay``.
+        """
         with self._lock:
-            d = self.delay if self.enabled else 0
-        if d > 0:
-            time.sleep(d)
+            self._cooldown_until = max(self._cooldown_until,
+                                       time.monotonic() + max(0.0, seconds))
+
+    def wait(self):
+        """Reserve a monotonic start slot, then sleep until it arrives.
+
+        Slots are handed out under the lock so N workers space their starts
+        by ``delay`` each instead of all waking at once after sleeping the
+        same duration; a server-requested cooldown pushes the slots out.
+        The cooldown horizon is re-checked after the sleep so a cooldown
+        that arrived while waiting is still honored.
+        """
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                start = max(now, self._next_slot, self._cooldown_until)
+                if self.enabled:
+                    self._next_slot = start + self.delay
+                else:
+                    self._next_slot = start
+                delay = start - now
+            if delay > 0:
+                time.sleep(delay)
+            with self._lock:
+                if time.monotonic() >= self._cooldown_until:
+                    return

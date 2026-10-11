@@ -1,0 +1,733 @@
+{
+  "target": "chrome142",
+  "alias_of": null,
+  "source": "curl_cffi 0.16.3",
+  "captured_at": "2026-10-10T18:32:04+00:00",
+  "runs": 3,
+  "sni": "tls.peet.ws",
+  "record_version": "0301",
+  "legacy_version": "0303",
+  "session_id_len": 32,
+  "compression_methods": [
+    0
+  ],
+  "handshake_length": {
+    "min": 1744,
+    "max": 1776,
+    "fixed": false
+  },
+  "total_bytes": {
+    "min": 1753,
+    "max": 1785,
+    "fixed": false
+  },
+  "cipher_suites": [
+    "GREASE",
+    "1301",
+    "1302",
+    "1303",
+    "c02b",
+    "c02f",
+    "c02c",
+    "c030",
+    "cca9",
+    "cca8",
+    "c013",
+    "c014",
+    "009c",
+    "009d",
+    "002f",
+    "0035"
+  ],
+  "cipher_names": [
+    "GREASE",
+    "TLS_AES_128_GCM_SHA256",
+    "TLS_AES_256_GCM_SHA384",
+    "TLS_CHACHA20_POLY1305_SHA256",
+    "ECDHE-ECDSA-AES128-GCM-SHA256",
+    "ECDHE-RSA-AES128-GCM-SHA256",
+    "ECDHE-ECDSA-AES256-GCM-SHA384",
+    "ECDHE-RSA-AES256-GCM-SHA384",
+    "ECDHE-ECDSA-CHACHA20-POLY1305",
+    "ECDHE-RSA-CHACHA20-POLY1305",
+    "ECDHE-RSA-AES128-SHA",
+    "ECDHE-RSA-AES256-SHA",
+    "AES128-GCM-SHA256",
+    "AES256-GCM-SHA384",
+    "AES128-SHA",
+    "AES256-SHA"
+  ],
+  "cipher_count": 15,
+  "extension_count": 16,
+  "extension_count_with_grease": 18,
+  "extension_order_fixed": false,
+  "extension_fixed_prefix": [
+    "GREASE"
+  ],
+  "extension_fixed_suffix": [
+    "GREASE"
+  ],
+  "extension_orders_seen": [
+    [
+      "GREASE",
+      "0010",
+      "002d",
+      "000b",
+      "0017",
+      "0012",
+      "44cd",
+      "0000",
+      "002b",
+      "0023",
+      "000d",
+      "001b",
+      "ff01",
+      "0033",
+      "000a",
+      "fe0d",
+      "0005",
+      "GREASE"
+    ],
+    [
+      "GREASE",
+      "002d",
+      "0012",
+      "001b",
+      "002b",
+      "000d",
+      "0033",
+      "0010",
+      "000b",
+      "0023",
+      "000a",
+      "ff01",
+      "44cd",
+      "0000",
+      "0005",
+      "fe0d",
+      "0017",
+      "GREASE"
+    ],
+    [
+      "GREASE",
+      "002d",
+      "44cd",
+      "fe0d",
+      "000b",
+      "000a",
+      "0005",
+      "0023",
+      "0017",
+      "0000",
+      "ff01",
+      "0033",
+      "001b",
+      "0012",
+      "000d",
+      "0010",
+      "002b",
+      "GREASE"
+    ]
+  ],
+  "extensions": [
+    {
+      "type": "GREASE",
+      "name": "GREASE",
+      "length": 0,
+      "position": "fixed",
+      "body_fixed": true,
+      "params": {
+        "length": 0
+      }
+    },
+    {
+      "type": "0010",
+      "name": "application_layer_protocol_negotiation",
+      "length": 14,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "protocols": [
+          "h2",
+          "http/1.1"
+        ]
+      },
+      "body_hex": "000c02683208687474702f312e31"
+    },
+    {
+      "type": "002d",
+      "name": "psk_key_exchange_modes",
+      "length": 2,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "modes": [
+          1
+        ],
+        "mode_names": [
+          "psk_dhe_ke"
+        ]
+      },
+      "body_hex": "0101"
+    },
+    {
+      "type": "000b",
+      "name": "ec_point_formats",
+      "length": 2,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "formats": [
+          0
+        ]
+      },
+      "body_hex": "0100"
+    },
+    {
+      "type": "0017",
+      "name": "extended_master_secret",
+      "length": 0,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "length": 0
+      },
+      "body_hex": ""
+    },
+    {
+      "type": "0012",
+      "name": "signed_certificate_timestamp",
+      "length": 0,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "length": 0
+      },
+      "body_hex": ""
+    },
+    {
+      "type": "44cd",
+      "name": "application_settings",
+      "length": 5,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "protocols": [
+          "h2"
+        ]
+      },
+      "body_hex": "0003026832"
+    },
+    {
+      "type": "0000",
+      "name": "server_name",
+      "length": 16,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "host_names": [
+          "tls.peet.ws"
+        ]
+      }
+    },
+    {
+      "type": "002b",
+      "name": "supported_versions",
+      "length": 7,
+      "position": "permuted",
+      "body_fixed": false,
+      "params": {
+        "versions": [
+          "GREASE",
+          "0304",
+          "0303"
+        ],
+        "version_names": [
+          "GREASE",
+          "TLS 1.3",
+          "TLS 1.2"
+        ]
+      }
+    },
+    {
+      "type": "0023",
+      "name": "session_ticket",
+      "length": 0,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "ticket_len": 0
+      },
+      "body_hex": ""
+    },
+    {
+      "type": "000d",
+      "name": "signature_algorithms",
+      "length": 18,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "algorithms": [
+          "0403",
+          "0804",
+          "0401",
+          "0503",
+          "0805",
+          "0501",
+          "0806",
+          "0601"
+        ],
+        "algorithm_names": [
+          "ecdsa_secp256r1_sha256",
+          "rsa_pss_rsae_sha256",
+          "rsa_pkcs1_sha256",
+          "ecdsa_secp384r1_sha384",
+          "rsa_pss_rsae_sha384",
+          "rsa_pkcs1_sha384",
+          "rsa_pss_rsae_sha512",
+          "rsa_pkcs1_sha512"
+        ]
+      },
+      "body_hex": "001004030804040105030805050108060601"
+    },
+    {
+      "type": "001b",
+      "name": "compress_certificate",
+      "length": 3,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "algorithms": [
+          2
+        ],
+        "algorithm_names": [
+          "brotli"
+        ]
+      },
+      "body_hex": "020002"
+    },
+    {
+      "type": "ff01",
+      "name": "renegotiation_info",
+      "length": 1,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "renegotiated_connection_len": 0
+      },
+      "body_hex": "00"
+    },
+    {
+      "type": "0033",
+      "name": "key_share",
+      "length": 1263,
+      "position": "permuted",
+      "body_fixed": false,
+      "params": {
+        "shares": [
+          {
+            "group": "GREASE",
+            "name": "GREASE",
+            "key_length": 1
+          },
+          {
+            "group": "11ec",
+            "name": "X25519MLKEM768",
+            "key_length": 1216
+          },
+          {
+            "group": "001d",
+            "name": "x25519",
+            "key_length": 32
+          }
+        ]
+      }
+    },
+    {
+      "type": "000a",
+      "name": "supported_groups",
+      "length": 12,
+      "position": "permuted",
+      "body_fixed": false,
+      "params": {
+        "groups": [
+          "GREASE",
+          "11ec",
+          "001d",
+          "0017",
+          "0018"
+        ],
+        "group_names": [
+          "GREASE",
+          "X25519MLKEM768",
+          "x25519",
+          "secp256r1",
+          "secp384r1"
+        ]
+      }
+    },
+    {
+      "type": "fe0d",
+      "name": "encrypted_client_hello",
+      "length": 250,
+      "position": "permuted",
+      "body_fixed": false,
+      "params": {
+        "type": 0,
+        "type_name": "outer",
+        "kdf_id": "0001",
+        "kdf_name": "HKDF-SHA256",
+        "aead_id": "0001",
+        "aead_name": "AES-128-GCM",
+        "enc_len": 32
+      }
+    },
+    {
+      "type": "0005",
+      "name": "status_request",
+      "length": 5,
+      "position": "permuted",
+      "body_fixed": true,
+      "params": {
+        "status_type": 1,
+        "responder_id_list_len": 0,
+        "request_extensions_len": 0,
+        "status_type_name": "ocsp"
+      },
+      "body_hex": "0100000000"
+    },
+    {
+      "type": "GREASE",
+      "name": "GREASE",
+      "length": 1,
+      "position": "fixed",
+      "body_fixed": true,
+      "params": {
+        "length": 1
+      }
+    }
+  ],
+  "supported_groups": [
+    "GREASE",
+    "11ec",
+    "001d",
+    "0017",
+    "0018"
+  ],
+  "supported_group_names": [
+    "GREASE",
+    "X25519MLKEM768",
+    "x25519",
+    "secp256r1",
+    "secp384r1"
+  ],
+  "signature_algorithms": [
+    "0403",
+    "0804",
+    "0401",
+    "0503",
+    "0805",
+    "0501",
+    "0806",
+    "0601"
+  ],
+  "signature_algorithm_names": [
+    "ecdsa_secp256r1_sha256",
+    "rsa_pss_rsae_sha256",
+    "rsa_pkcs1_sha256",
+    "ecdsa_secp384r1_sha384",
+    "rsa_pss_rsae_sha384",
+    "rsa_pkcs1_sha384",
+    "rsa_pss_rsae_sha512",
+    "rsa_pkcs1_sha512"
+  ],
+  "key_share": [
+    {
+      "group": "GREASE",
+      "name": "GREASE",
+      "key_length": 1
+    },
+    {
+      "group": "11ec",
+      "name": "X25519MLKEM768",
+      "key_length": 1216
+    },
+    {
+      "group": "001d",
+      "name": "x25519",
+      "key_length": 32
+    }
+  ],
+  "alpn": [
+    "h2",
+    "http/1.1"
+  ],
+  "alps": [
+    "h2"
+  ],
+  "alps_codepoint": "44cd",
+  "supported_versions": [
+    "GREASE",
+    "0304",
+    "0303"
+  ],
+  "psk_key_exchange_modes": [
+    1
+  ],
+  "compress_certificate": [
+    "brotli"
+  ],
+  "ec_point_formats": [
+    0
+  ],
+  "record_size_limit": null,
+  "delegated_credentials": null,
+  "padding_length": null,
+  "ech": {
+    "type": "outer",
+    "kdf": "HKDF-SHA256",
+    "kdf_id": "0001",
+    "aead": "AES-128-GCM",
+    "aead_id": "0001",
+    "enc_len": 32,
+    "payload_len_seen": [
+      176,
+      208
+    ],
+    "config_id_seen": [
+      100,
+      109,
+      176
+    ],
+    "total_len": 250
+  },
+  "variable_fields": [
+    "random",
+    "session_id",
+    "handshake_length",
+    "extension_order",
+    "grease_values.ciphers",
+    "grease_values.extensions",
+    "grease_values.groups",
+    "grease_values.versions",
+    "grease_values.key_share",
+    "ext.002b.bytes",
+    "ext.0033.bytes",
+    "ext.000a.bytes",
+    "ext.fe0d.bytes",
+    "key_share.key_bytes",
+    "ech.config_id",
+    "ech.payload_len",
+    "ech.bytes",
+    "fingerprint.ja3_hash",
+    "fingerprint.ja4_o"
+  ],
+  "fixed_fields": [
+    "record_version",
+    "legacy_version",
+    "session_id_len",
+    "compression_methods",
+    "cipher_suites",
+    "extension_set",
+    "key_share.groups_and_sizes",
+    "ech.enc_len",
+    "fingerprint.ja4",
+    "fingerprint.ja4_r"
+  ],
+  "fingerprints": {
+    "ja3": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,16-45-11-23-18-17613-0-43-35-13-27-65281-51-10-65037-5,4588-29-23-24,0",
+    "ja3_hash": "1c7837b70d213bd354ee51c881e2faa7",
+    "ja3_hashes_seen": [
+      "06c7f8ed165c3eb59889d40614b5ae96",
+      "1c7837b70d213bd354ee51c881e2faa7",
+      "5fc6ed1c747b436f916fe25fe75ebab8"
+    ],
+    "ja3_stable": false,
+    "ja4": "t13d1516h2_8daaf6152771_d8a2da3f94cd",
+    "ja4_r": "t13d1516h2_002f,0035,009c,009d,1301,1302,1303,c013,c014,c02b,c02c,c02f,c030,cca8,cca9_0005,000a,000b,000d,0012,0017,001b,0023,002b,002d,0033,44cd,fe0d,ff01_0403,0804,0401,0503,0805,0501,0806,0601",
+    "ja4_o": "t13d1516h2_acb858a92679_07e72c74baa2",
+    "ja4_ro": "t13d1516h2_1301,1302,1303,c02b,c02f,c02c,c030,cca9,cca8,c013,c014,009c,009d,002f,0035_0010,002d,000b,0017,0012,44cd,0000,002b,0023,000d,001b,ff01,0033,000a,fe0d,0005_0403,0804,0401,0503,0805,0501,0806,0601",
+    "ja4_o_values_seen": [
+      "t13d1516h2_acb858a92679_07e72c74baa2",
+      "t13d1516h2_acb858a92679_85aa918bd356",
+      "t13d1516h2_acb858a92679_fe3475b55dc0"
+    ]
+  },
+  "captures": [
+    {
+      "captured_at": "2026-10-10T18:32:04+00:00",
+      "handshake_length": 1776,
+      "ja3_hash": "1c7837b70d213bd354ee51c881e2faa7",
+      "ja4": "t13d1516h2_8daaf6152771_d8a2da3f94cd",
+      "ja4_o": "t13d1516h2_acb858a92679_07e72c74baa2",
+      "extension_order": [
+        "GREASE",
+        "0010",
+        "002d",
+        "000b",
+        "0017",
+        "0012",
+        "44cd",
+        "0000",
+        "002b",
+        "0023",
+        "000d",
+        "001b",
+        "ff01",
+        "0033",
+        "000a",
+        "fe0d",
+        "0005",
+        "GREASE"
+      ],
+      "grease_values": {
+        "ciphers": [
+          "2a2a"
+        ],
+        "extensions": [
+          "5a5a",
+          "baba"
+        ],
+        "groups": [
+          "9a9a"
+        ],
+        "versions": [
+          "fafa"
+        ],
+        "key_share": [
+          "9a9a"
+        ]
+      },
+      "random": "6e2d6eef0754378ef363b7408f5343fa2feb74e71ac3676b2c63b9c9e716254c",
+      "session_id": "a32d7cd36c9d5c4e8851211c38c07f32f60cbf97a5846dd875bb8490ee46f40a"
+    },
+    {
+      "captured_at": "2026-10-10T18:32:04+00:00",
+      "handshake_length": 1744,
+      "ja3_hash": "06c7f8ed165c3eb59889d40614b5ae96",
+      "ja4": "t13d1516h2_8daaf6152771_d8a2da3f94cd",
+      "ja4_o": "t13d1516h2_acb858a92679_fe3475b55dc0",
+      "extension_order": [
+        "GREASE",
+        "002d",
+        "0012",
+        "001b",
+        "002b",
+        "000d",
+        "0033",
+        "0010",
+        "000b",
+        "0023",
+        "000a",
+        "ff01",
+        "44cd",
+        "0000",
+        "0005",
+        "fe0d",
+        "0017",
+        "GREASE"
+      ],
+      "grease_values": {
+        "ciphers": [
+          "2a2a"
+        ],
+        "extensions": [
+          "3a3a",
+          "2a2a"
+        ],
+        "groups": [
+          "aaaa"
+        ],
+        "versions": [
+          "9a9a"
+        ],
+        "key_share": [
+          "aaaa"
+        ]
+      },
+      "random": "9dde504b90a567a0c38e4f3257140f75e8b8d718df24416e149f2d65fa8804b8",
+      "session_id": "c67ca1dbd84d0134508a1ada017eaa572a1284d84cabf1c47188933f3f6fa1bc"
+    },
+    {
+      "captured_at": "2026-10-10T18:32:05+00:00",
+      "handshake_length": 1744,
+      "ja3_hash": "5fc6ed1c747b436f916fe25fe75ebab8",
+      "ja4": "t13d1516h2_8daaf6152771_d8a2da3f94cd",
+      "ja4_o": "t13d1516h2_acb858a92679_85aa918bd356",
+      "extension_order": [
+        "GREASE",
+        "002d",
+        "44cd",
+        "fe0d",
+        "000b",
+        "000a",
+        "0005",
+        "0023",
+        "0017",
+        "0000",
+        "ff01",
+        "0033",
+        "001b",
+        "0012",
+        "000d",
+        "0010",
+        "002b",
+        "GREASE"
+      ],
+      "grease_values": {
+        "ciphers": [
+          "aaaa"
+        ],
+        "extensions": [
+          "0a0a",
+          "1a1a"
+        ],
+        "groups": [
+          "6a6a"
+        ],
+        "versions": [
+          "fafa"
+        ],
+        "key_share": [
+          "6a6a"
+        ]
+      },
+      "random": "1814b515541385b1720823107e16b190721ad266bd7d43d50130f8c303e2fc59",
+      "session_id": "3ff8036b50dfd4721a31bc8c1376026269083edb886e6791368ef91435f9014e"
+    }
+  ],
+  "peet_live": {
+    "ja3_hash": "8a9a03c2b2dd606a1827ee7035b5d8a3",
+    "ja3": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,65281-35-13-17613-18-27-11-0-10-16-65037-23-51-45-43-5,4588-29-23-24,0",
+    "ja4": "t13d1516h2_8daaf6152771_d8a2da3f94cd",
+    "ja4_r": "t13d1516h2_002f,0035,009c,009d,1301,1302,1303,c013,c014,c02b,c02c,c02f,c030,cca8,cca9_0005,000a,000b,000d,0012,0017,001b,0023,002b,002d,0033,44cd,fe0d,ff01_0403,0804,0401,0503,0805,0501,0806,0601",
+    "peetprint_hash": "1d4ffe9b0e34acac0bd883fa7f79d7b5",
+    "akamai": "1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p",
+    "http_version": "h2",
+    "ext_order": [
+      "TLS_GREASE",
+      "extensionRenegotiationInfo",
+      "session_ticket",
+      "signature_algorithms",
+      "application_settings",
+      "signed_certificate_timestamp",
+      "compress_certificate",
+      "ec_point_formats",
+      "server_name",
+      "supported_groups",
+      "application_layer_protocol_negotiation",
+      "extensionEncryptedClientHello",
+      "extended_master_secret",
+      "key_share",
+      "psk_key_exchange_modes",
+      "supported_versions",
+      "status_request",
+      "TLS_GREASE"
+    ],
+    "tls_version_record": "771",
+    "ja4_match": true,
+    "ja4_r_match": true,
+    "ja3_match": null,
+    "ja3_note": "extension order is permuted per connection; JA3 is a sample"
+  }
+}

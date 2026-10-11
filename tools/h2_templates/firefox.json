@@ -1,0 +1,594 @@
+{
+  "target": "firefox",
+  "captured_at": "2026-10-10 18:31 UTC",
+  "curl_cffi_version": "0.16.3",
+  "curl_version": "libcurl/8.21.0-IMPERSONATE BoringSSL zlib/1.3.1 brotli/1.2.0 zstd/1.5.7 AppleIDN nghttp2/1.63.0 ngtcp2/1.20.0 nghttp3/1.15.0",
+  "runs": 2,
+  "stable_across_runs": true,
+  "unstable_fields": [],
+  "tls": {
+    "alpn": "h2",
+    "version": "TLSv1.3",
+    "cipher": "TLS_AES_256_GCM_SHA384",
+    "sni": null
+  },
+  "client_frames_before_response": [
+    "SETTINGS",
+    "WINDOW_UPDATE",
+    "HEADERS"
+  ],
+  "settings": [
+    {
+      "id": 1,
+      "name": "HEADER_TABLE_SIZE",
+      "value": 65536
+    },
+    {
+      "id": 2,
+      "name": "ENABLE_PUSH",
+      "value": 0
+    },
+    {
+      "id": 4,
+      "name": "INITIAL_WINDOW_SIZE",
+      "value": 131072
+    },
+    {
+      "id": 5,
+      "name": "MAX_FRAME_SIZE",
+      "value": 16384
+    }
+  ],
+  "window_update": {
+    "stream_id": 0,
+    "increment": 12517377
+  },
+  "other_window_updates": [],
+  "priority_frames": [],
+  "headers_frame": {
+    "stream_id": 1,
+    "flags": 37,
+    "flag_names": [
+      "END_STREAM",
+      "END_HEADERS",
+      "PRIORITY"
+    ],
+    "priority": {
+      "exclusive": false,
+      "dependency": 0,
+      "weight": 42
+    },
+    "padding_length": null,
+    "header_block_length": 291,
+    "header_block_hex": "82048b6107a4ac5634cffe76803f418b089d5c0b8170dc6dc6c2d7877abed07f66a281b0dae053fad0321aa49d13fda992a49685340c8a6adca7e28102e16fed4b3bdc0b4eae0fed4c452753b02004000802a61358594fe580b4eae053b0497ca589d34d1f43aeba0c41a4c7a98f33a69a3fdf9a68fa1d75d0620d263d4c79a68fbed00177febe58f9fbed00177b518b2d4b70ddf45abefb4005df50929bd9abfa5242cb40d25fa523b3e94f684c9f4092b6b9ac1c8558d520a4b6c2ad617b5a54251f0131408a4148b4a549275a42a13f8690e4b692d49f408a4148b4a549275a93c85f86a87dcd30d25f408a4148b4a549275906497f83a8f517408a4148b4a549275ad416cf023f314086aec31ec327d785b6007d286f40027465864d833505b11f"
+  },
+  "hpack_dynamic_table_size_updates": [],
+  "headers": [
+    {
+      "name": ":method",
+      "value": "GET",
+      "representation": "indexed-static",
+      "index": 2
+    },
+    {
+      "name": ":path",
+      "value": "/some/path?q=1",
+      "representation": "literal-without-indexing",
+      "name_source": "static-table",
+      "name_index": 4,
+      "value_huffman": true
+    },
+    {
+      "name": ":authority",
+      "value": "127.0.0.1:56514",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 1,
+      "value_huffman": true
+    },
+    {
+      "name": ":scheme",
+      "value": "https",
+      "representation": "indexed-static",
+      "index": 7
+    },
+    {
+      "name": "user-agent",
+      "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 58,
+      "value_huffman": true
+    },
+    {
+      "name": "accept",
+      "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 19,
+      "value_huffman": true
+    },
+    {
+      "name": "accept-language",
+      "value": "en-US,en;q=0.9",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 17,
+      "value_huffman": true
+    },
+    {
+      "name": "accept-encoding",
+      "value": "gzip, deflate, br, zstd",
+      "representation": "literal-incremental",
+      "name_source": "static-table",
+      "name_index": 16,
+      "value_huffman": true
+    },
+    {
+      "name": "upgrade-insecure-requests",
+      "value": "1",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": false
+    },
+    {
+      "name": "sec-fetch-dest",
+      "value": "document",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": true
+    },
+    {
+      "name": "sec-fetch-mode",
+      "value": "navigate",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": true
+    },
+    {
+      "name": "sec-fetch-site",
+      "value": "none",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": true
+    },
+    {
+      "name": "sec-fetch-user",
+      "value": "?1",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": false
+    },
+    {
+      "name": "priority",
+      "value": "u=0, i",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": true,
+      "value_huffman": true
+    },
+    {
+      "name": "te",
+      "value": "trailers",
+      "representation": "literal-incremental",
+      "name_source": "literal",
+      "name_huffman": false,
+      "value_huffman": true
+    }
+  ],
+  "pseudo_header_order": [
+    "m",
+    "p",
+    "a",
+    "s"
+  ],
+  "regular_header_order": [
+    "user-agent",
+    "accept",
+    "accept-language",
+    "accept-encoding",
+    "upgrade-insecure-requests",
+    "sec-fetch-dest",
+    "sec-fetch-mode",
+    "sec-fetch-site",
+    "sec-fetch-user",
+    "priority",
+    "te"
+  ],
+  "akamai_fingerprint": "1:65536;2:0;4:131072;5:16384|12517377|0|m,p,a,s",
+  "post_response_client_frames": [
+    {
+      "type": "SETTINGS",
+      "length": 0,
+      "flags": 1,
+      "flag_names": [
+        "ACK"
+      ],
+      "stream_id": 0,
+      "settings": []
+    },
+    {
+      "type": "GOAWAY",
+      "length": 17,
+      "flags": 0,
+      "flag_names": [],
+      "stream_id": 0,
+      "last_stream_id": 0,
+      "error_code": 0,
+      "error_name": "NO_ERROR",
+      "debug_data": "shutdown\u0000"
+    }
+  ],
+  "connection_closed_by": "client-close-notify",
+  "client_result": {
+    "status": 200,
+    "http_version": 3,
+    "error": null,
+    "body": "ok"
+  },
+  "http11": {
+    "request_line": "GET /some/path?q=1 HTTP/1.1",
+    "headers": [
+      [
+        "Host",
+        "127.0.0.1:56515"
+      ],
+      [
+        "Upgrade",
+        "h2c"
+      ],
+      [
+        "HTTP2-Settings",
+        "AAEAAQAAAAIAAAAAAAQAAgAAAAUAAEAA"
+      ],
+      [
+        "User-Agent",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0"
+      ],
+      [
+        "Accept",
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      ],
+      [
+        "Accept-Language",
+        "en-US,en;q=0.9"
+      ],
+      [
+        "Accept-Encoding",
+        "gzip, deflate, br, zstd"
+      ],
+      [
+        "Upgrade-Insecure-Requests",
+        "1"
+      ],
+      [
+        "Sec-Fetch-Dest",
+        "document"
+      ],
+      [
+        "Sec-Fetch-Mode",
+        "navigate"
+      ],
+      [
+        "Sec-Fetch-Site",
+        "none"
+      ],
+      [
+        "Sec-Fetch-User",
+        "?1"
+      ],
+      [
+        "Priority",
+        "u=0, i"
+      ],
+      [
+        "Te",
+        "trailers"
+      ],
+      [
+        "Connection",
+        "Upgrade, HTTP2-Settings"
+      ]
+    ],
+    "header_order": [
+      "Host",
+      "Upgrade",
+      "HTTP2-Settings",
+      "User-Agent",
+      "Accept",
+      "Accept-Language",
+      "Accept-Encoding",
+      "Upgrade-Insecure-Requests",
+      "Sec-Fetch-Dest",
+      "Sec-Fetch-Mode",
+      "Sec-Fetch-Site",
+      "Sec-Fetch-User",
+      "Priority",
+      "Te",
+      "Connection"
+    ],
+    "upgrade_h2c": true,
+    "connection_header": "Upgrade, HTTP2-Settings",
+    "http2_settings_decoded": [
+      {
+        "id": 1,
+        "name": "HEADER_TABLE_SIZE",
+        "value": 65536
+      },
+      {
+        "id": 2,
+        "name": "ENABLE_PUSH",
+        "value": 0
+      },
+      {
+        "id": 4,
+        "name": "INITIAL_WINDOW_SIZE",
+        "value": 131072
+      },
+      {
+        "id": 5,
+        "name": "MAX_FRAME_SIZE",
+        "value": 16384
+      }
+    ],
+    "stable_across_runs": true
+  },
+  "peet_ws": {
+    "akamai_fingerprint": "1:65536;2:0;4:131072;5:16384|12517377|0|m,p,a,s",
+    "akamai_matches_local": true,
+    "headers_frame_flags": [
+      "EndStream (0x1)",
+      "EndHeaders (0x4)",
+      "Priority (0x20)"
+    ],
+    "ja3_hash": "6f7889b9fb1a62a9577e685c1fcfa919",
+    "ja4": "t13d1717h2_5b57614c22b0_3cbfd9057e0d",
+    "peetprint_hash": "89d89662b21018947a9a46658c4f5ede",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
+    "error": null
+  },
+  "raw": {
+    "client_raw_hex": "505249202a20485454502f322e300d0a0d0a534d0d0a0d0a00001804000000000000010001000000020000000000040002000000050000400000000408000000000000bf0001000128012500000001000000002982048b6107a4ac5634cffe76803f418b089d5c0b8170dc6dc6c2d7877abed07f66a281b0dae053fad0321aa49d13fda992a49685340c8a6adca7e28102e16fed4b3bdc0b4eae0fed4c452753b02004000802a61358594fe580b4eae053b0497ca589d34d1f43aeba0c41a4c7a98f33a69a3fdf9a68fa1d75d0620d263d4c79a68fbed00177febe58f9fbed00177b518b2d4b70ddf45abefb4005df50929bd9abfa5242cb40d25fa523b3e94f684c9f4092b6b9ac1c8558d520a4b6c2ad617b5a54251f0131408a4148b4a549275a42a13f8690e4b692d49f408a4148b4a549275a93c85f86a87dcd30d25f408a4148b4a549275906497f83a8f517408a4148b4a549275ad416cf023f314086aec31ec327d785b6007d286f40027465864d833505b11f000000040100000000000011070000000000000000000000000073687574646f776e00",
+    "timeline": [
+      {
+        "dir": "server",
+        "type": "SETTINGS",
+        "flags": 0,
+        "stream_id": 0,
+        "note": "server SETTINGS 3:100"
+      },
+      {
+        "dir": "client",
+        "type": "PREFACE",
+        "ok": true,
+        "raw": "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+      },
+      {
+        "type": "SETTINGS",
+        "length": 24,
+        "flags": 0,
+        "flag_names": [],
+        "stream_id": 0,
+        "settings": [
+          {
+            "id": 1,
+            "name": "HEADER_TABLE_SIZE",
+            "value": 65536
+          },
+          {
+            "id": 2,
+            "name": "ENABLE_PUSH",
+            "value": 0
+          },
+          {
+            "id": 4,
+            "name": "INITIAL_WINDOW_SIZE",
+            "value": 131072
+          },
+          {
+            "id": 5,
+            "name": "MAX_FRAME_SIZE",
+            "value": 16384
+          }
+        ],
+        "dir": "client"
+      },
+      {
+        "dir": "server",
+        "type": "SETTINGS",
+        "flags": 1,
+        "stream_id": 0,
+        "note": "SETTINGS ACK"
+      },
+      {
+        "type": "WINDOW_UPDATE",
+        "length": 4,
+        "flags": 0,
+        "flag_names": [],
+        "stream_id": 0,
+        "increment": 12517377,
+        "dir": "client"
+      },
+      {
+        "type": "HEADERS",
+        "length": 296,
+        "flags": 37,
+        "flag_names": [
+          "END_STREAM",
+          "END_HEADERS",
+          "PRIORITY"
+        ],
+        "stream_id": 1,
+        "padding_length": null,
+        "priority": {
+          "exclusive": false,
+          "dependency": 0,
+          "weight": 42
+        },
+        "header_block_length": 291,
+        "headers": [
+          {
+            "name": ":method",
+            "value": "GET",
+            "representation": "indexed-static",
+            "index": 2
+          },
+          {
+            "name": ":path",
+            "value": "/some/path?q=1",
+            "representation": "literal-without-indexing",
+            "name_source": "static-table",
+            "name_index": 4,
+            "value_huffman": true
+          },
+          {
+            "name": ":authority",
+            "value": "127.0.0.1:56514",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 1,
+            "value_huffman": true
+          },
+          {
+            "name": ":scheme",
+            "value": "https",
+            "representation": "indexed-static",
+            "index": 7
+          },
+          {
+            "name": "user-agent",
+            "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 58,
+            "value_huffman": true
+          },
+          {
+            "name": "accept",
+            "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 19,
+            "value_huffman": true
+          },
+          {
+            "name": "accept-language",
+            "value": "en-US,en;q=0.9",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 17,
+            "value_huffman": true
+          },
+          {
+            "name": "accept-encoding",
+            "value": "gzip, deflate, br, zstd",
+            "representation": "literal-incremental",
+            "name_source": "static-table",
+            "name_index": 16,
+            "value_huffman": true
+          },
+          {
+            "name": "upgrade-insecure-requests",
+            "value": "1",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": false
+          },
+          {
+            "name": "sec-fetch-dest",
+            "value": "document",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": true
+          },
+          {
+            "name": "sec-fetch-mode",
+            "value": "navigate",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": true
+          },
+          {
+            "name": "sec-fetch-site",
+            "value": "none",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": true
+          },
+          {
+            "name": "sec-fetch-user",
+            "value": "?1",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": false
+          },
+          {
+            "name": "priority",
+            "value": "u=0, i",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": true,
+            "value_huffman": true
+          },
+          {
+            "name": "te",
+            "value": "trailers",
+            "representation": "literal-incremental",
+            "name_source": "literal",
+            "name_huffman": false,
+            "value_huffman": true
+          }
+        ],
+        "dynamic_table_size_updates": [],
+        "dir": "client"
+      },
+      {
+        "dir": "server",
+        "type": "HEADERS",
+        "flags": 4,
+        "stream_id": 1,
+        "note": "response HEADERS :status 200"
+      },
+      {
+        "dir": "server",
+        "type": "DATA",
+        "flags": 1,
+        "stream_id": 1,
+        "note": "response DATA END_STREAM"
+      },
+      {
+        "type": "SETTINGS",
+        "length": 0,
+        "flags": 1,
+        "flag_names": [
+          "ACK"
+        ],
+        "stream_id": 0,
+        "settings": [],
+        "dir": "client"
+      },
+      {
+        "type": "GOAWAY",
+        "length": 17,
+        "flags": 0,
+        "flag_names": [],
+        "stream_id": 0,
+        "last_stream_id": 0,
+        "error_code": 0,
+        "error_name": "NO_ERROR",
+        "debug_data": "shutdown\u0000",
+        "dir": "client"
+      }
+    ]
+  }
+}

@@ -49,6 +49,7 @@ from .http import (
     RetryPolicy,
     Session,
     TransportError,
+    URLPolicyError,
     detect_encoding,
     download,
     fetch,
@@ -56,6 +57,7 @@ from .http import (
     post,
 )
 from .tls import FINGERPRINTS, PROFILES, Profile
+from .websocket import AsyncWebSocket, WebSocket
 from .parser import Selector, SelectorList
 from .pipelines import (
     CsvPipeline,
@@ -64,34 +66,33 @@ from .pipelines import (
     Pipeline,
     SqlitePipeline,
 )
+from .render import BrowserSession, render, render_if_empty
 from .spider import Request, SitemapSpider, Spider
 from .throttle import AutoThrottle
 
+# The native engines are loaded with the package, not lazily on first request.
+# transport.py imports them inside functions; two threads making their first
+# HTTP/2 request concurrently (or racing another hpack user) can deadlock
+# Python 3.14's per-module import locks. Package import is serialized by the
+# import system, so doing it here removes the race, and every later lazy
+# ``from ._h2 import ...`` is a plain sys.modules lookup.
+from . import _h2  # noqa: F401  (cryptography and hpack are required deps)
+from . import _tls  # noqa: F401
 
-def render(url, **kwargs):
-    """Fetch ``url`` in a real browser (optional Playwright extra)."""
-    from .render import render as _render
-    return _render(url, **kwargs)
-
-
-def render_if_empty(response, **kwargs):
-    """Render only when the plain-HTTP response looks hollow."""
-    from .render import render_if_empty as _rie
-    return _rie(response, **kwargs)
-
-
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 
 __all__ = [
     # transport
     "get", "post", "fetch", "download", "Session", "Response", "RetryPolicy",
-    "HTTPStatusError", "TransportError", "CookieJar", "PROFILES",
+    "HTTPStatusError", "TransportError", "URLPolicyError", "CookieJar",
+    "PROFILES",
     "FINGERPRINTS", "Profile",
     "DiskCache",
     "detect_encoding",
     "AsyncSession", "aget", "apost",
+    "WebSocket", "AsyncWebSocket",
     # rendering (optional playwright extra)
-    "render", "render_if_empty",
+    "render", "render_if_empty", "BrowserSession",
     # parsing
     "Selector", "SelectorList",
     "signature", "similarity", "save", "relocate",

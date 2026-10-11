@@ -10,9 +10,11 @@ tables(), markdown() - the answers most scrapes actually want, one call away.
 """
 from __future__ import annotations
 
+import copy
 import json as _json
 import re
-from urllib.parse import urljoin
+from collections.abc import Mapping
+from urllib.parse import urldefrag, urljoin, urlparse
 
 import lxml.html
 
@@ -34,6 +36,16 @@ def _text_of(el):
         return el.text_content().strip()
     except Exception:  # noqa: BLE001
         return (getattr(el, "text", "") or "").strip()
+
+
+def _page_origin(parts):
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    if port is None:
+        port = 443 if parts.scheme == "https" else 80
+    return (parts.scheme.lower(), (parts.hostname or "").lower(), port)
 
 
 def _is_ancestor(el, candidate):
@@ -82,13 +94,26 @@ class Selector:
     def __init__(self, content=None, element=None, url=None, status=None, headers=None):
         if element is not None:
             self._el = element
-        elif content is not None:
+        elif content is not None and getattr(content, "strip", lambda: content)():
             self._el = lxml.html.fromstring(content)
         else:
             self._el = lxml.html.fromstring("<html></html>")
         self.url = url
         self.status = status
         self.headers = dict(headers or {})
+
+    @property
+    def base_url(self):
+        """The page's effective base URL.
+
+        The first ``<base href>`` (in document order) resolved against the
+        page URL; the page URL itself when no base element is present.
+        """
+        bases = self._el.xpath("//base")
+        if not bases:
+            return self.url
+        href = (bases[0].get("href") or "").strip()
+        return urljoin(self.url or "", href) or self.url
 
     # --- selection ---------------------------------------------------------
     def css(self, query, auto_match=False, identifier=None, storage=None):
@@ -227,20 +252,36 @@ class Selector:
         return out
 
     def links(self, absolute=True, unique=True, internal_only=False):
-        """All hyperlinks as {url, text} dicts. absolute resolves against the page url."""
-        from urllib.parse import urlparse
-        base = self.url or ""
-        page_host = urlparse(base).netloc
+        """All hyperlinks as {url, text} dicts.
+
+        Only http/https links are returned - ``javascript:``, ``mailto:``,
+        ``data:`` and other schemes are dropped regardless of letter case.
+        absolute resolves against ``base_url`` (so a ``<base href>`` is
+        honored); unique dedups on the fragment-stripped URL; internal_only
+        compares against the real page origin, not a possibly off-origin
+        ``<base>``.
+        """
+        base = self.base_url or ""
+        page_origin = _page_origin(urlparse(self.url or ""))
         seen = set()
         out = []
         for a in self._el.xpath("//a[@href]"):
-            href = a.get("href").strip()
-            if not href or href.startswith(("javascript:", "mailto:", "tel:", "#")):
+            href = (a.get("href") or "").strip()
+            if not href or href.startswith("#"):
                 continue
             url = urljoin(base, href) if absolute else href
-            if internal_only and urlparse(url).netloc not in ("", page_host):
+            scheme = urlparse(url).scheme.lower()
+            if absolute:
+                if scheme not in ("http", "https"):
+                    continue
+            elif scheme and scheme not in ("http", "https"):
                 continue
+            if internal_only:
+                probe = url if absolute else urljoin(base, href)
+                if _page_origin(urlparse(probe)) != page_origin:
+                    continue
             if unique:
+                url = urldefrag(url)[0]
                 if url in seen:
                     continue
                 seen.add(url)
@@ -249,14 +290,42 @@ class Selector:
 
     def images(self, absolute=True):
         """All images as {url, alt} dicts (handles src and data-src lazy loading)."""
-        base = self.url or ""
+        base = self.base_url or ""
         out = []
         for img in self._el.xpath("//img"):
             src = img.get("src") or img.get("data-src") or img.get("data-lazy-src")
-            if not src or src.startswith("data:"):
+            if not src:
                 continue
-            out.append({"url": urljoin(base, src) if absolute else src,
-                        "alt": img.get("alt", "")})
+            if urlparse(src).scheme.lower() not in ("", "http", "https"):
+                continue
+            url = urljoin(base, src) if absolute else src
+            if absolute and urlparse(url).scheme.lower() not in ("http", "https"):
+                continue
+            out.append({"url": url, "alt": img.get("alt", "")})
+        return out
+
+    def extract(self, fields, *, many=False):
+        """Pull named scalar fields out of the page with CSS queries.
+
+        ``fields`` maps a name to a CSS query string. With ``many=False``
+        (default) each name gets the first match's scalar - element text
+        for element matches, or the attr/text pseudo value for
+        ``::attr()``/``::text`` queries - or None when nothing matches.
+        With ``many=True`` each name gets the list of all matching scalars.
+        """
+        if not isinstance(fields, Mapping):
+            raise TypeError("fields must be a mapping of name -> CSS query")
+        out = {}
+        for name, query in fields.items():
+            if not isinstance(name, str) or not isinstance(query, str):
+                raise TypeError("extract fields must map str names to str CSS queries")
+            results = self.css(query)
+            if many:
+                out[name] = [v.text if isinstance(v, Selector) else v
+                             for v in results]
+            else:
+                first = results.get()
+                out[name] = first.text if isinstance(first, Selector) else first
         return out
 
     def tables(self):
@@ -273,12 +342,47 @@ class Selector:
                 out.append(rows)
         return out
 
-    def markdown(self, max_len=None):
+    _MD_TAGS = frozenset(
+        {"h1", "h2", "h3", "h4", "p", "li", "blockquote", "pre", "figcaption"})
+
+    def markdown(self, max_len=None, main_only=False):
         """The page's readable content as markdown-ish text: headings, paragraphs,
-        list items, blockquotes, code. The 'just let me read it' method."""
+        list items, blockquotes, code. The 'just let me read it' method.
+
+        ``main_only=True`` restricts output to the first ``<main>`` or
+        ``<article>`` element, with nav/footer/aside/script/style stripped
+        from a *cloned* subtree (the source document is never mutated) and
+        nested content elements emitted once at their outermost level.
+        """
+        emit = self._MD_TAGS
+        if main_only:
+            main = self._el.xpath("//main|//article")
+            if not main:
+                return ""
+            root = copy.deepcopy(main[0])
+            for bad in root.xpath(".//nav|.//footer|.//aside|.//script|.//style"):
+                parent = bad.getparent()
+                if parent is not None:
+                    parent.remove(bad)
+            query = ".//*[self::h1 or self::h2 or self::h3 or self::h4 or " \
+                    "self::p or self::li or self::blockquote or self::pre or " \
+                    "self::figcaption]"
+        else:
+            root = self._el
+            query = ("//h1|//h2|//h3|//h4|//p|//li|//blockquote|//pre"
+                     "|//figcaption")
         parts = []
-        for e in self._el.xpath(
-                "//h1|//h2|//h3|//h4|//p|//li|//blockquote|//pre|//figcaption"):
+        for e in root.xpath(query):
+            if main_only:
+                nested = False
+                ancestor = e.getparent()
+                while ancestor is not None and ancestor is not root:
+                    if ancestor.tag in emit:
+                        nested = True
+                        break
+                    ancestor = ancestor.getparent()
+                if nested:
+                    continue
             t = " ".join(_text_of(e).split())
             if not t:
                 continue
