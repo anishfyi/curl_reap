@@ -3,8 +3,11 @@
 Needs the optional h2 extra: pip install "curl-reap[h2]".
 """
 import http.server
+from pathlib import Path
+import shutil
 import ssl
 import socketserver
+import subprocess
 import threading
 
 import pytest
@@ -17,8 +20,46 @@ from h2.events import (DataReceived, RequestReceived,  # noqa: E402
 
 import curl_reap                           # noqa: E402
 
-CERT = "/tmp/h2cert/cert.pem"
-KEY = "/tmp/h2cert/key.pem"
+@pytest.fixture(scope="module")
+def tls_material(tmp_path_factory):
+    """Isolated localhost PKI: a proper CA and a leaf with SKI/AKI/SAN.
+
+    The native verifier is strict RFC 5280: a self-signed leaf asserting
+    CA:TRUE (the 1.x shortcut) is rejected, so the fixture mints a real
+    two-certificate chain.
+    """
+    openssl = shutil.which("openssl")
+    if not openssl:
+        pytest.skip("HTTP/2 TLS tests require openssl")
+    root = tmp_path_factory.mktemp("h2cert")
+    ca_cert, ca_key = root / "ca.pem", root / "ca.key"
+    cert, key = root / "cert.pem", root / "key.pem"
+    csr = root / "leaf.csr"
+    subprocess.run(
+        [openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(ca_key), "-out", str(ca_cert), "-days", "1",
+         "-subj", "/CN=reap test ca",
+         "-addext", "basicConstraints=critical,CA:TRUE",
+         "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+         "-addext", "subjectKeyIdentifier=hash"],
+        check=True, capture_output=True)
+    subprocess.run(
+        [openssl, "req", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(key), "-out", str(csr), "-subj", "/CN=localhost"],
+        check=True, capture_output=True)
+    ext = root / "leaf.ext"
+    ext.write_text(
+        "basicConstraints=critical,CA:FALSE\n"
+        "keyUsage=critical,digitalSignature,keyEncipherment\n"
+        "subjectAltName=DNS:localhost,IP:127.0.0.1\n"
+        "subjectKeyIdentifier=hash\n"
+        "authorityKeyIdentifier=keyid,issuer\n")
+    subprocess.run(
+        [openssl, "x509", "-req", "-in", str(csr), "-CA", str(ca_cert),
+         "-CAkey", str(ca_key), "-CAcreateserial", "-out", str(cert),
+         "-days", "1", "-extfile", str(ext)],
+        check=True, capture_output=True)
+    return cert, key, ca_cert
 
 
 class H2Handler:
@@ -65,7 +106,7 @@ class H2Handler:
             return
 
 
-def _serve_tls(alpn_protocols):
+def _serve_tls(alpn_protocols, cert: Path, key: Path):
     class Threading(socketserver.ThreadingMixIn, http.server.HTTPServer):
         daemon_threads = True
 
@@ -83,7 +124,7 @@ def _serve_tls(alpn_protocols):
     raw = Threading(("127.0.0.1", 0), lambda *a: None)  # placeholder app
     port = raw.server_address[1]
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(CERT, KEY)
+    context.load_cert_chain(cert, key)
     context.set_alpn_protocols(alpn_protocols)
 
     def accept_loop():
@@ -113,42 +154,51 @@ def _serve_tls(alpn_protocols):
 
 
 @pytest.fixture(scope="module")
-def h2_base():
-    return _serve_tls(["h2"])
+def h2_base(tls_material):
+    cert, key, ca = tls_material
+    return _serve_tls(["h2"], cert, key), ca
 
 
 @pytest.fixture(scope="module")
-def plain11_base():
-    return _serve_tls(["http/1.1"])
+def plain11_base(tls_material):
+    cert, key, ca = tls_material
+    return _serve_tls(["http/1.1"], cert, key), ca
 
 
 def test_http2_round_trip_and_connection_reuse(h2_base):
-    with curl_reap.Session(http2=True, verify="/tmp/h2cert/cert.pem") as s:
-        r = s.get(h2_base + "/first", impersonate="chrome131")
+    base, ca = h2_base
+    with curl_reap.Session(http2=True, verify=str(ca)) as s:
+        r = s.get(base + "/first", impersonate="chrome131")
         assert r.status == 200
         assert r.text.startswith("h2:Mozilla/5.0"), r.text
         assert r.raw.http_version == "HTTP/2"
         assert r.cookies.get("h2c") == "1"
         # same pooled connection serves the second stream
-        r2 = s.get(h2_base + "/second", impersonate="firefox133")
+        r2 = s.get(base + "/second", impersonate="firefox133")
         assert r2.status == 200
-        assert "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0)" in r2.text
+        assert "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0)" in r2.text
 
 
 def test_cookie_set_over_h2_replays(h2_base):
-    with curl_reap.Session(http2=True, verify="/tmp/h2cert/cert.pem") as s:
-        s.get(h2_base + "/warmup")
+    base, ca = h2_base
+    with curl_reap.Session(http2=True, verify=str(ca)) as s:
+        s.get(base + "/warmup")
         jar_before = s.cookies.get_dict().get("h2c")
         assert jar_before == "1"
 
 
 def test_graceful_fallback_when_server_is_1_1_only(plain11_base):
-    with curl_reap.Session(http2=True, verify="/tmp/h2cert/cert.pem") as s:
-        r = s.get(plain11_base + "/x")
+    base, ca = plain11_base
+    with curl_reap.Session(http2=True, verify=str(ca)) as s:
+        r = s.get(base + "/x")
         assert r.status == 200 and r.text == "ok"
 
 
-def test_http2_off_by_default(h2_base):
-    with curl_reap.Session(verify="/tmp/h2cert/cert.pem") as s:
-        r = s.get(h2_base + "/x")
+def test_http2_on_by_default_and_opt_out(h2_base):
+    base, ca = h2_base
+    with curl_reap.Session(verify=str(ca)) as s:
+        r = s.get(base + "/x")
+        assert r.raw.http_version == "HTTP/2"
+    with curl_reap.Session(http2=False, verify=str(ca)) as s:
+        r = s.get(base + "/x")
         assert r.raw.http_version != "HTTP/2"

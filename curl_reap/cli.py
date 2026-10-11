@@ -17,9 +17,48 @@ import sys
 
 def _fetch(url, profile, rotate, impersonate=None, http2=False):
     from .http import Session
-    s = Session(profile=profile, rotate=rotate, impersonate=impersonate,
-                http2=http2)
+    # HTTP/2 is negotiated by default now; the legacy --http2 flag is a no-op
+    s = Session(profile=profile, rotate=rotate, impersonate=impersonate)
     return s.get(url)
+
+
+def _cmd_doctor(args):
+    """Fetch a fingerprint echo service and compare against the captures."""
+    from .fingerprint import EXPECTED, check
+    if args.list:
+        for name in sorted(EXPECTED):
+            print(name)
+        return 0
+    try:
+        report = check(target=args.target, url=args.url)
+    except Exception as exc:
+        print("[reap] doctor could not reach %s: %s" % (args.url, exc),
+              file=sys.stderr)
+        return 2
+    print("target      %s" % report["target"])
+    print("url         %s" % args.url)
+    print("http        %s" % report.get("http_version"))
+    print("ja3         %s" % (report.get("ja3") or "-"))
+    print("ja4         %s" % report.get("ja4"))
+    print("peetprint   %s" % (report.get("peetprint") or "-"))
+    print("akamai h2   %s" % (report.get("akamai") or "-"))
+    print("")
+    ok = True
+    for name, matched in sorted((report.get("matches") or {}).items()):
+        if name == "headers":
+            continue
+        print("  %-12s %s" % (name, "MATCH" if matched else "DIFFERS"))
+        ok = ok and matched
+    headers = (report.get("matches") or {}).get("headers")
+    if headers is not None:
+        print("  %-12s %s" % ("headers", "MATCH" if headers else "DIFFERS"))
+        ok = ok and headers
+    if not ok:
+        print("\n[reap] fingerprint differs from the captured bytes; "
+              "expected values:", file=sys.stderr)
+        for key, value in sorted((report.get("expected") or {}).items()):
+            print("  %-12s %s" % (key, value), file=sys.stderr)
+    return 0 if ok else 1
 
 
 def _cmd_get(args):
@@ -96,6 +135,94 @@ def _cmd_crawl(args):
     return 0
 
 
+def _service_env():
+    """Shared env config for serve/worker. Secrets stay in the environment."""
+    import os
+    api_key = os.environ.get("REAP_API_KEY")
+    redis_url = os.environ.get("REAP_REDIS_URL", "redis://127.0.0.1:6379/0")
+    raw = os.environ.get("REAP_ALLOWED_ORIGINS", "")
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    proxy_url = os.environ.get("REAP_PROXY_URL")
+    if not api_key:
+        print("[reap] REAP_API_KEY is not set", file=sys.stderr)
+        return None
+    if not origins:
+        print("[reap] REAP_ALLOWED_ORIGINS is empty "
+              "(comma-separated scheme://host:port list)", file=sys.stderr)
+        return None
+    return api_key, redis_url, origins, proxy_url
+
+
+def _redis_queue(redis_url):
+    """Connect the job queue without ever echoing the URL - it may carry
+    a password."""
+    try:
+        import redis as _redis
+        from .jobs import RedisJobQueue
+    except ImportError:
+        print("[reap] the job service needs the server extra: "
+              "pip install 'curl-reap[server]'", file=sys.stderr)
+        return None
+    try:
+        client = _redis.Redis.from_url(redis_url)
+        queue = RedisJobQueue(client)
+    except Exception:
+        print("[reap] could not connect to Redis via REAP_REDIS_URL",
+              file=sys.stderr)
+        return None
+    return queue
+
+
+def _cmd_serve(args):
+    env = _service_env()
+    if env is None:
+        return 2
+    api_key, redis_url, origins, proxy_url = env
+    try:
+        import uvicorn
+        from .service import create_app
+    except ImportError:
+        print("[reap] serve needs the server extra: "
+              "pip install 'curl-reap[server]'", file=sys.stderr)
+        return 2
+    queue = _redis_queue(redis_url)
+    if queue is None:
+        return 2
+    try:
+        app = create_app(queue=queue, api_key=api_key,
+                         allowed_origins=origins)
+    except ValueError as exc:
+        print("[reap] %s" % exc, file=sys.stderr)
+        return 2
+    uvicorn.run(app, host=args.host, port=args.port)
+    return 0
+
+
+def _cmd_worker(args):
+    env = _service_env()
+    if env is None:
+        return 2
+    api_key, redis_url, origins, proxy_url = env
+    try:
+        from .jobs import Worker
+    except ImportError:
+        print("[reap] worker needs the server extra: "
+              "pip install 'curl-reap[server]'", file=sys.stderr)
+        return 2
+    queue = _redis_queue(redis_url)
+    if queue is None:
+        return 2
+    try:
+        worker = Worker(queue, origins, proxy=proxy_url)
+    except ValueError as exc:
+        print("[reap] %s" % exc, file=sys.stderr)
+        return 2
+    print("[reap] worker %s draining jobs" % worker.worker_id,
+          file=sys.stderr)
+    worker.serve_forever()
+    return 0
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="reap", description="reap the web from the shell")
     p.add_argument("--http2", action="store_true",
@@ -140,6 +267,28 @@ def build_parser():
     c.add_argument("--robots", action="store_true", help="respect robots.txt")
     c.add_argument("-o", "--out", help="output file (.jsonl/.csv/.db)")
     c.set_defaults(func=_cmd_crawl)
+
+    s = sub.add_parser("serve", help="run the private job API (server extra; "
+                                   "reads REAP_API_KEY/REAP_REDIS_URL/"
+                                   "REAP_ALLOWED_ORIGINS)")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8000)
+    s.set_defaults(func=_cmd_serve)
+
+    w = sub.add_parser("worker", help="run one distributed job worker "
+                                      "(server extra; same env as serve)")
+    w.set_defaults(func=_cmd_worker)
+
+    d = sub.add_parser("doctor",
+                       help="verify this machine's wire fingerprint against "
+                            "the captured browser values")
+    d.add_argument("target", nargs="?", default="chrome",
+                   help="impersonate target to verify (default chrome)")
+    d.add_argument("--url", default="https://tls.peet.ws/api/all",
+                   help="fingerprint echo service")
+    d.add_argument("--list", action="store_true",
+                   help="list every known target and exit")
+    d.set_defaults(func=_cmd_doctor)
     return p
 
 
