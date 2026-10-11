@@ -647,8 +647,11 @@ def test_goaway_error_before_the_response_still_raises():
 
     with H2TestServer(handler) as server:
         conn = server.connect("chrome")
-        with pytest.raises(H2Error, match="PROTOCOL_ERROR"):
+        with pytest.raises(H2Error, match="PROTOCOL_ERROR") as excinfo:
             conn.request("GET", "https", "h", "/", [], deadline=time.monotonic() + 5)
+        # the server claimed the stream (last_stream_id covers it), so it may
+        # have been processed: never advertise it as safe to retry
+        assert excinfo.value.retryable is False
 
 
 def test_invalid_headers_are_rejected_before_sending():
