@@ -70,6 +70,15 @@ from .render import BrowserSession, render, render_if_empty
 from .spider import Request, SitemapSpider, Spider
 from .throttle import AutoThrottle
 
+# The native engines are loaded with the package, not lazily on first request.
+# transport.py imports them inside functions; two threads making their first
+# HTTP/2 request concurrently (or racing another hpack user) can deadlock
+# Python 3.14's per-module import locks. Package import is serialized by the
+# import system, so doing it here removes the race, and every later lazy
+# ``from ._h2 import ...`` is a plain sys.modules lookup.
+from . import _h2  # noqa: F401  (cryptography and hpack are required deps)
+from . import _tls  # noqa: F401
+
 __version__ = "2.0.0"
 
 __all__ = [
