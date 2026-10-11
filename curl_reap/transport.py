@@ -24,6 +24,7 @@ connect, each socket read, and sets a whole-request deadline of their sum.
 from __future__ import annotations
 
 import base64
+import hashlib
 import ipaddress
 import logging
 import os
@@ -240,6 +241,36 @@ def _decode_content(content, encoding):
             raise ContentDecodingError("unsupported Content-Encoding %r" % current)
     return decoded
 
+
+
+def _tls_identity(value, secret_index=None):
+    """A hashable stand-in for a ``verify`` or ``cert`` argument, for pool keys.
+
+    Booleans, paths and strings are used as they are; tuples (``(cert, key,
+    password)``) element-wise, with the password at ``secret_index`` replaced
+    by its SHA-256 so no secret sits in a pool key; anything else (an
+    ``ssl.SSLContext``, a custom object) by identity. The object itself goes
+    in the key, so it stays alive as long as the key does and its id can never
+    be recycled onto a different object while connections are pooled.
+    """
+    if value is None or isinstance(value, (bool, int, str, bytes)):
+        return value
+    if isinstance(value, os.PathLike):
+        return os.fspath(value)
+    if isinstance(value, (tuple, list)):
+        parts = []
+        for index, item in enumerate(value):
+            if index == secret_index and item is not None:
+                raw = item if isinstance(item, bytes) else str(item).encode()
+                parts.append(("sha256", hashlib.sha256(raw).hexdigest()))
+            else:
+                parts.append(_tls_identity(item))
+        return tuple(parts)
+    try:
+        hash(value)
+    except TypeError:
+        return ("id", id(value))
+    return ("obj", value)
 
 class _StreamDecoder:
     """Incremental Content-Encoding decoder for streaming bodies."""
@@ -544,12 +575,31 @@ class _Transport:
         self.interface = interface
         self.max_idle_per_key = max_idle_per_key
         self.idle_ttl = idle_ttl
-        self._session_cache = None
-        try:
-            from ._tls import SessionCache
-            self._session_cache = SessionCache()
-        except Exception:
-            pass
+        # One resumption cache per TLS trust identity (verify + client cert).
+        # A PSK resumption skips certificate verification by design, so a
+        # ticket earned under one policy (verify=False, another CA bundle,
+        # another client certificate) must never resume a connection that
+        # asked for a different one. curl does the same: a cached session is
+        # reused only when the SSL config matches.
+        self._session_caches: "Dict[tuple, object]" = {}
+
+    _MAX_SESSION_CACHES = 32
+
+    def _session_cache_for(self, verify, cert):
+        """The ticket cache for this trust identity, created on first use."""
+        key = (_tls_identity(verify), _tls_identity(cert, secret_index=2))
+        with self._lock:
+            cache = self._session_caches.get(key)
+            if cache is None:
+                try:
+                    from ._tls import SessionCache
+                except Exception:
+                    return None
+                if len(self._session_caches) >= self._MAX_SESSION_CACHES:
+                    # Drop the oldest identity: losing tickets only costs a full handshake.
+                    self._session_caches.pop(next(iter(self._session_caches)))
+                cache = self._session_caches[key] = SessionCache()
+            return cache
 
     # -- native engine availability ------------------------------------------
     @staticmethod
@@ -594,9 +644,14 @@ class _Transport:
                 pass
 
     # -- pool -----------------------------------------------------------------
-    def _connection_key(self, scheme, host, port, proxy, profile, verify, backend):
-        return (scheme, host, port, proxy, getattr(profile, "name", str(profile)),
-                bool(verify), backend, self.interface)
+    def _connection_key(self, scheme, host, port, proxy, profile, verify, backend, cert=None):
+        # The key carries the full TLS identity: a connection verified against
+        # one CA bundle (or opened with one client certificate) must never be
+        # reused for a request that asked for another. bool(verify) let a
+        # request with an untrusted CA ride a connection verified elsewhere.
+        name = profile.name if hasattr(profile, "name") else str(profile)
+        return (scheme, host, port, proxy, name, _tls_identity(verify),
+                _tls_identity(cert, secret_index=2), backend, self.interface)
 
     def _acquire(self, key, read_timeout, deadline):
         """Pop a live idle connection for ``key`` or return None."""
@@ -680,7 +735,8 @@ class _Transport:
             key_backend = "openssl"
         else:
             key_backend = "plain"
-        key = self._connection_key(scheme, host, port, proxy, profile, verify, key_backend)
+        key = self._connection_key(scheme, host, port, proxy, profile, verify, key_backend,
+                                   cert)
         connect_timeout, read_timeout, _ = self._deadlines(timeout)
 
         proxy_parts = None
@@ -839,7 +895,7 @@ class _Transport:
                 from ._tls.errors import TLS12Negotiated
                 tls = native_wrap(sock, host, profile.tls_template, verify=verify,
                                   alpn=alpn, timeout=connect_timeout, deadline=deadline,
-                                  session_cache=self._session_cache)
+                                  session_cache=self._session_cache_for(verify, cert))
                 infos = {
                     "alpn": tls.selected_alpn_protocol(),
                     "cipher": tls.cipher()[0] if tls.cipher() else None,
@@ -1228,7 +1284,7 @@ class _Transport:
                 raise ChunkedEncodingError("chunk data is not terminated by CRLF")
 
     # -- request execution -----------------------------------------------------
-    def _route_key(self, scheme, host, port, proxy, profile, verify):
+    def _route_key(self, scheme, host, port, proxy, profile, verify, cert=None):
         backend = "plain"
         if scheme == "https":
             if (self.tls_backend != "openssl"
@@ -1237,7 +1293,7 @@ class _Transport:
                 backend = "native"
             else:
                 backend = "openssl"
-        return self._connection_key(scheme, host, port, proxy, profile, verify, backend)
+        return self._connection_key(scheme, host, port, proxy, profile, verify, backend, cert)
 
     def _single_request(self, method, url, profile, custom_headers, body,
                         content_type, timeout, proxy, verify, auth, sink=None,
@@ -1289,7 +1345,7 @@ class _Transport:
                                      quote(parts.path or "/", safe="/%:@!$&'()*+,;=-._~"),
                                      quote(parts.query, safe="=&?/:;+,%@!$'()*-._~"), ""))
 
-        key = self._route_key(scheme, host, port, proxy, profile, verify)
+        key = self._route_key(scheme, host, port, proxy, profile, verify, cert)
         conn = self._acquire(key, read_timeout, deadline)
         if conn is None:
             conn = self._connect(scheme, host, port, proxy, profile, verify, timeout,
