@@ -73,12 +73,42 @@ def test_get_css(local_url, capsys):
     assert capsys.readouterr().out.strip() == "Hello reap"
 
 
-def test_worker_never_prints_redis_url_or_password(monkeypatch, capsys):
-    secret = "s3cr3t-p%40ss"
+class _FakeRedisClient:
+    def register_script(self, script):  # redis-py registers lazily, no I/O
+        return lambda *a, **kw: None
+
+
+class _FakeRedisModule:
+    """Stands in for the optional ``redis`` package, so the sanitization
+    tests run with or without the ``server`` extra installed. Building the
+    queue only calls ``Redis.from_url`` and ``register_script``, neither of
+    which touches the network in redis-py."""
+
+    class Redis:
+        @staticmethod
+        def from_url(url):
+            # Mirror redis-py: unknown schemes raise ValueError, and the
+            # message may echo the URL (which is what the CLI must never print).
+            if not url.startswith(("redis://", "rediss://", "unix://")):
+                raise ValueError("Redis URL must specify one of the following "
+                                 "schemes: %s" % url)
+            return _FakeRedisClient()
+
+
+@pytest.fixture
+def fake_redis(monkeypatch):
+    monkeypatch.setitem(sys.modules, "redis", _FakeRedisModule)
+
+
+def _service_env(monkeypatch, redis_url):
     monkeypatch.setenv("REAP_API_KEY", "k")
     monkeypatch.setenv("REAP_ALLOWED_ORIGINS", "http://127.0.0.1:8000")
-    monkeypatch.setenv("REAP_REDIS_URL",
-                       "redis://:s3cr3t-p%%40ss@127.0.0.1:1/0")
+    monkeypatch.setenv("REAP_REDIS_URL", redis_url)
+
+
+def test_worker_never_prints_redis_url_or_password(monkeypatch, capsys, fake_redis):
+    secret = "s3cr3t-p%40ss"
+    _service_env(monkeypatch, "redis://:s3cr3t-p%%40ss@127.0.0.1:1/0")
     from curl_reap.jobs import Worker
     monkeypatch.setattr(Worker, "serve_forever", lambda self, **kw: None)
     rc = cli._cmd_worker(type("A", (), {})())
@@ -89,15 +119,30 @@ def test_worker_never_prints_redis_url_or_password(monkeypatch, capsys):
     assert "draining" in out.err
 
 
-def test_worker_bad_redis_url_is_sanitized(monkeypatch, capsys):
-    monkeypatch.setenv("REAP_API_KEY", "k")
-    monkeypatch.setenv("REAP_ALLOWED_ORIGINS", "http://127.0.0.1:8000")
-    monkeypatch.setenv("REAP_REDIS_URL", "bogus://:s3cr3t@nowhere")
+def test_worker_bad_redis_url_is_sanitized(monkeypatch, capsys, fake_redis):
+    _service_env(monkeypatch, "bogus://:s3cr3t@nowhere")
     assert cli._cmd_worker(type("A", (), {})()) == 2
     err = capsys.readouterr().err
     assert "s3cr3t" not in err
     assert "bogus://" not in err
     assert "REAP_REDIS_URL" in err
+
+
+def test_worker_bad_redis_url_is_sanitized_with_real_redis(monkeypatch, capsys):
+    """Same contract against the real client, when the server extra is installed."""
+    pytest.importorskip("redis")
+    _service_env(monkeypatch, "bogus://:s3cr3t@nowhere")
+    assert cli._cmd_worker(type("A", (), {})()) == 2
+    err = capsys.readouterr().err
+    assert "s3cr3t" not in err and "bogus://" not in err
+
+
+def test_worker_without_server_extra_says_so(monkeypatch, capsys):
+    """Without redis installed the worker refuses cleanly and names the extra."""
+    _service_env(monkeypatch, "redis://127.0.0.1:1/0")
+    monkeypatch.setitem(sys.modules, "redis", None)  # makes `import redis` raise ImportError
+    assert cli._cmd_worker(type("A", (), {})()) == 2
+    assert "curl-reap[server]" in capsys.readouterr().err
 
 
 def test_service_commands_require_api_key(monkeypatch, capsys):
