@@ -747,12 +747,7 @@ class _Transport:
     def _connect(self, scheme, host, port, proxy, profile, verify, timeout, deadline,
                  cert=None, http_version="v2", debug=False):
         key_backend = self.tls_backend
-        use_native = (
-            scheme == "https"
-            and self.tls_backend != "openssl"
-            and getattr(profile, "tls_template", None)
-            and self._native_available()
-        )
+        use_native = self._backend_for(scheme, profile, cert) == "native"
         if use_native:
             key_backend = "native"
         elif scheme == "https":
@@ -1004,13 +999,15 @@ class _Transport:
         context = create_ssl_context(profile, verify=verify, alpn=alpn)
         if cert:
             # the reference client style: a path, or (cert, key[, key_password]).
-            if isinstance(cert, str):
-                cert, key, password = cert, None, None
+            if isinstance(cert, (str, bytes, os.PathLike)):
+                cert_file, key, password = cert, None, None
             else:
-                cert, key = cert[0], cert[1]
-                password = cert[2] if len(cert) > 2 else None
+                parts = tuple(cert)
+                cert_file = parts[0]
+                key = parts[1] if len(parts) > 1 else None
+                password = parts[2] if len(parts) > 2 else None
             try:
-                context.load_cert_chain(cert, key, password)
+                context.load_cert_chain(cert_file, key, password)
             except (OSError, ssl.SSLError) as exc:
                 try:
                     sock.close()
@@ -1312,15 +1309,30 @@ class _Transport:
                 raise ChunkedEncodingError("chunk data is not terminated by CRLF")
 
     # -- request execution -----------------------------------------------------
+    def _backend_for(self, scheme, profile, cert):
+        """Which engine a connection uses: "native", "openssl" or "plain".
+
+        The native engine cannot present a client certificate (it answers a
+        CertificateRequest with an empty Certificate), so a request with
+        ``cert`` goes through OpenSSL under ``tls="auto"`` and is refused
+        under ``tls="native"`` rather than silently sent without it.
+        """
+        if scheme != "https":
+            return "plain"
+        if cert:
+            if self.tls_backend == "native":
+                raise ValueError(
+                    "tls='native' cannot send a client certificate; use tls='auto' "
+                    "(which switches to OpenSSL for cert= requests) or tls='openssl'")
+            return "openssl"
+        if (self.tls_backend != "openssl"
+                and getattr(profile, "tls_template", None)
+                and self._native_available()):
+            return "native"
+        return "openssl"
+
     def _route_key(self, scheme, host, port, proxy, profile, verify, cert=None):
-        backend = "plain"
-        if scheme == "https":
-            if (self.tls_backend != "openssl"
-                    and getattr(profile, "tls_template", None)
-                    and self._native_available()):
-                backend = "native"
-            else:
-                backend = "openssl"
+        backend = self._backend_for(scheme, profile, cert)
         return self._connection_key(scheme, host, port, proxy, profile, verify, backend, cert)
 
     def _single_request(self, method, url, profile, custom_headers, body,
