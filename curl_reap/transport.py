@@ -161,6 +161,15 @@ def _merge_headers(*sources):
     return merged
 
 
+def _h2_profile_headers(profile):
+    """The profile's captured HTTP/2 header set (lowercase names, browser order).
+    Profiles without one get their HTTP/1.1 headers lowercased, as browsers do."""
+    captured = getattr(profile, "h2_headers", None)
+    if captured is not None:
+        return captured
+    return tuple((name.lower(), value) for name, value in profile.headers)
+
+
 def _find_header(headers, name):
     lower = name.lower()
     for current, value in headers:
@@ -1343,13 +1352,18 @@ class _Transport:
             token = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
             automatic.append(("Authorization", "Basic " + token))
 
-        headers = _merge_headers((("Host", authority),), profile.headers, custom_headers)
-        if content_type and _find_header(headers, "Content-Type") is None:
-            headers = _merge_headers(headers, (("Content-Type", content_type),))
-        if body or method.upper() in ("POST", "PUT", "PATCH"):
-            headers = _merge_headers(headers, (("Content-Length", str(len(body))),))
-        if automatic:
-            headers = _merge_headers(headers, automatic)
+        def assemble(*base):
+            """Profile headers, then the caller's, then what the request implies."""
+            merged = _merge_headers(*base, custom_headers)
+            if content_type and _find_header(merged, "Content-Type") is None:
+                merged = _merge_headers(merged, (("Content-Type", content_type),))
+            if body or method.upper() in ("POST", "PUT", "PATCH"):
+                merged = _merge_headers(merged, (("Content-Length", str(len(body))),))
+            if automatic:
+                merged = _merge_headers(merged, automatic)
+            return merged
+
+        headers = assemble((("Host", authority),), profile.headers)
 
         target = _request_target(parts)
         proxy_parts = None
@@ -1378,10 +1392,12 @@ class _Transport:
                 for name, value in headers:
                     logger.info(">%s: %s", name, value)
             if conn.h2 is not None:
+                # Browsers send a different header set over HTTP/2 (Chrome and Safari
+                # add ``priority``): use the target's captured h2 set, not h1 lowercased.
                 try:
                     return self._h2_exchange(conn, method, scheme, host, port, authority,
-                                             parts, headers, body, sink, max_body, deadline,
-                                             debug)
+                                             parts, assemble(_h2_profile_headers(profile)),
+                                             body, sink, max_body, deadline, debug)
                 finally:
                     # alive h2 connections return to the pool; dead ones GOAWAY-closed
                     self._release(conn, conn.h2 is not None and conn.h2.alive)
