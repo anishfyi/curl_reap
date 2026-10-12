@@ -960,48 +960,100 @@ def _sent_header_names(payload: Dict[str, Any]) -> List[str]:
     return list(payload.get("header_order") or [])
 
 
+def _expectations(target: str) -> Tuple[str, Dict[str, Any], Any]:
+    """(capture name, expected values, profile or None) for any impersonate name.
+
+    Captured targets have their own :data:`EXPECTED` entry.  Aliases and the
+    legacy 1.x names render another target's capture (``tls_template`` and
+    ``h2_spec``), so that capture's values are what the wire must show.
+    """
+    profile = None
+    try:
+        from .tls import resolve_profile  # lazy: keeps the calculators transport-free
+        profile = resolve_profile(target)
+    except Exception:
+        profile = None
+    if target in EXPECTED:
+        return target, dict(EXPECTED[target]), profile
+    tls_key = getattr(profile, "tls_template", None)
+    if tls_key in EXPECTED:
+        expected = dict(EXPECTED[tls_key])
+        h2_key = getattr(profile, "h2_spec", None)
+        if isinstance(h2_key, str) and h2_key in EXPECTED:
+            expected["akamai"] = EXPECTED[h2_key]["akamai"]
+        return tls_key, expected, profile
+    raise KeyError("unknown fingerprint target %r; run `reap doctor --list` for the "
+                   "known names" % target)
+
+
+def _expected_header_names(profile: Any, http_version: Any) -> Optional[List[str]]:
+    """The regular header names, in order, that ``profile`` sends on this protocol."""
+    if profile is None:
+        return None
+    if str(http_version or "").lower() in ("h2", "http/2", "http/2.0", "2"):
+        source = getattr(profile, "h2_headers", None) or getattr(profile, "headers", ())
+    else:
+        source = getattr(profile, "headers", ())
+    return [name.lower() for name, _ in source]
+
+
 def check(target: str = "chrome", url: str = "https://tls.peet.ws/api/all",
           session: Any = None) -> Dict[str, Any]:
-    """Fetch a fingerprint echo for ``target`` and report observed vs expected.
+    """Fetch a fingerprint echo *as* ``target`` and report observed vs expected.
 
-    Returns a dict with ``target``, ``ja3``, ``ja4``, ``peetprint``,
-    ``akamai``, ``expected`` (this target's :data:`EXPECTED` entry),
-    ``matches`` (``ja4``/``ja4_r``/``akamai`` booleans; ``ja3`` is a boolean
-    only when the target's JA3 is stable, else ``None``), ``headers`` (the
-    request header names in order) and ``http_version``.
+    Returns a dict with ``target``, ``capture`` (the captured target whose
+    values apply; differs from ``target`` for aliases and legacy names),
+    ``ja3``, ``ja4``, ``peetprint``, ``akamai``, ``expected``, ``matches``,
+    ``headers`` (the request header names in order as the service saw them),
+    ``expected_headers`` and ``http_version``.
 
-    The HTTP client is imported lazily because it is being rewritten; a
-    caller that passes ``session`` (anything with ``get(url)`` returning an
-    object with ``json()``) needs no import at all.
+    ``matches`` holds ``ja4``, ``ja4_r``, ``akamai``, ``ja3`` and
+    ``headers``.  Each is True or False, or None when it cannot be compared:
+    ``ja3`` for targets whose JA3 changes per connection (Chromium permutes
+    its extensions), ``headers`` when the service did not echo the header
+    block.  A caller that passes ``session`` (anything with ``get(url)``
+    returning an object with ``json()``) is used as is; otherwise a Session
+    impersonating ``target`` is created and closed.
     """
+    capture, expected, profile = _expectations(target)
+    owned = session is None
+    if owned:
+        from curl_reap import http  # lazy: the calculators must work without the transport
+        session = http.Session(impersonate=target)
     try:
-        expected = EXPECTED[target]
-    except KeyError:
-        raise KeyError("unknown fingerprint target %r; known targets: %s"
-                       % (target, ", ".join(sorted(EXPECTED)))) from None
-    if session is None:
-        from curl_reap import http  # lazy: the HTTP client is owned by another module
-        session = http.Session()
-    response = session.get(url)
-    payload = response.json()
+        response = session.get(url)
+        payload = response.json()
+    finally:
+        if owned:
+            session.close()
     tls = payload.get("tls") or {}
     h2 = payload.get("http2") or {}
     ja3_text = tls.get("ja3")
+    http_version = payload.get("http_version") or getattr(response, "http_version", None)
+    sent = _sent_header_names(payload)
+    sent_regular = [n.lower() for n in sent if not n.startswith(":")]
+    expected_headers = _expected_header_names(profile, http_version)
+    headers_match = None
+    if sent_regular and expected_headers is not None:
+        headers_match = sent_regular == expected_headers
     return {
         "target": target,
+        "capture": capture,
         "ja3": ja3_text,
         "ja4": tls.get("ja4"),
         "peetprint": tls.get("peetprint"),
         "akamai": h2.get("akamai_fingerprint"),
-        "expected": dict(expected),
+        "expected": expected,
         "matches": {
             "ja4": tls.get("ja4") == expected["ja4"],
             "ja4_r": tls.get("ja4_r") == expected["ja4_r"],
             "akamai": h2.get("akamai_fingerprint") == expected["akamai"],
             "ja3": (ja3_text == expected["ja3"]) if expected["ja3_fixed"] else None,
+            "headers": headers_match,
         },
-        "headers": _sent_header_names(payload),
-        "http_version": payload.get("http_version") or getattr(response, "http_version", None),
+        "headers": sent,
+        "expected_headers": expected_headers,
+        "http_version": http_version,
     }
 
 

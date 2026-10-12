@@ -401,7 +401,8 @@ def test_check_against_a_matching_echo():
     assert report["akamai"] == fp.EXPECTED["firefox"]["akamai"]
     assert report["peetprint"].startswith("772-771|2-1.1|")
     assert report["expected"] == fp.EXPECTED["firefox"]
-    assert report["matches"] == {"ja4": True, "ja4_r": True, "akamai": True, "ja3": True}
+    assert report["matches"] == {"ja4": True, "ja4_r": True, "akamai": True, "ja3": True,
+                                 "headers": False}  # the stub echoes a short header list
     assert report["headers"] == [":method", ":authority", ":scheme", ":path",
                                  "user-agent", "sec-ch-ua", "accept-encoding"]
     assert report["http_version"] == "h2"
@@ -439,6 +440,110 @@ def test_check_falls_back_to_the_response_http_version_and_header_order():
 def test_check_rejects_unknown_targets():
     with pytest.raises(KeyError):
         fp.check(target="netscape", session=_StubSession(_peet_payload("chrome")))
+
+
+def _payload_with_headers(target, names):
+    payload = _peet_payload(target)
+    payload["http2"]["sent_frames"][-1]["headers"] = (
+        [":method: GET", ":authority: tls.peet.ws", ":scheme: https", ":path: /api/all"]
+        + ["%s: x" % n for n in names])
+    return payload
+
+
+def test_check_compares_the_header_order_with_the_targets_h2_set():
+    from curl_reap.tls import resolve_profile
+    names = [n for n, _ in resolve_profile("chrome150").h2_headers]
+    good = fp.check(target="chrome150", session=_StubSession(_payload_with_headers("chrome150", names)))
+    assert good["matches"]["headers"] is True
+    assert good["expected_headers"] == names
+    swapped = names[:]
+    swapped[0], swapped[1] = swapped[1], swapped[0]
+    bad = fp.check(target="chrome150", session=_StubSession(_payload_with_headers("chrome150", swapped)))
+    assert bad["matches"]["headers"] is False
+
+
+def test_check_headers_not_comparable_without_an_echoed_block():
+    payload = _peet_payload("firefox")
+    payload["http2"].pop("sent_frames")
+    assert fp.check(target="firefox", session=_StubSession(payload))["matches"]["headers"] is None
+
+
+@pytest.mark.parametrize("name,capture", [("edge_99", "edge99"), ("chrome98", "chrome99"),
+                                          ("safari18_4", "safari184")])
+def test_check_accepts_aliases_and_legacy_names(name, capture):
+    report = fp.check(target=name, session=_StubSession(_peet_payload(capture)))
+    assert report["capture"] == capture
+    assert report["matches"]["ja4"] is True and report["matches"]["akamai"] is True
+
+
+def test_check_impersonates_the_target_it_checks(monkeypatch):
+    # 2.0.0 always used Session() with no target, so every check measured Chrome.
+    import curl_reap.http as http_mod
+    seen = {}
+
+    class _Session(_StubSession):
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+            super().__init__(_peet_payload("firefox147"))
+
+        def close(self):
+            seen["closed"] = True
+
+    monkeypatch.setattr(http_mod, "Session", _Session)
+    fp.check(target="firefox147")
+    assert seen == {"impersonate": "firefox147", "closed": True}
+
+
+def _doctor(monkeypatch, capsys, report, *argv):
+    import curl_reap.cli as cli
+    monkeypatch.setattr(fp, "check", lambda target, url: dict(report, target=target))
+    rc = cli.main(["doctor", *argv]) if hasattr(cli, "main") else None
+    if rc is None:
+        args = cli.build_parser().parse_args(["doctor", *argv])
+        rc = args.func(args)
+    return rc, capsys.readouterr()
+
+
+def _report(**matches):
+    base = {"ja4": True, "ja4_r": True, "akamai": True, "ja3": None, "headers": True}
+    base.update(matches)
+    return {"capture": "chrome150", "matches": base, "expected": dict(fp.EXPECTED["chrome150"]),
+            "expected_headers": ["user-agent"], "http_version": "h2"}
+
+
+def test_doctor_not_comparable_rows_do_not_fail(monkeypatch, capsys):
+    rc, out = _doctor(monkeypatch, capsys, _report(), "chrome")
+    assert rc == 0
+    assert "n/a" in out.out and "every comparable fingerprint matches" in out.out
+
+
+def test_doctor_exits_1_on_a_real_difference(monkeypatch, capsys):
+    rc, out = _doctor(monkeypatch, capsys, _report(headers=False), "chrome")
+    assert rc == 1 and "headers" in out.err
+
+
+def test_doctor_unknown_target_says_so(capsys):
+    import curl_reap.cli as cli
+    args = cli.build_parser().parse_args(["doctor", "netscape"])
+    assert args.func(args) == 2
+    assert "unknown fingerprint target 'netscape'" in capsys.readouterr().err
+
+
+def test_doctor_uses_the_global_impersonate_option(monkeypatch, capsys):
+    import curl_reap.cli as cli
+    seen = []
+    monkeypatch.setattr(fp, "check", lambda target, url: seen.append(target) or dict(_report(), target=target))
+    args = cli.build_parser().parse_args(["--impersonate", "firefox147", "doctor"])
+    assert args.func(args) == 0
+    assert seen == ["firefox147"]
+
+
+def test_doctor_list_covers_every_name(capsys):
+    import curl_reap.cli as cli
+    from curl_reap.tls import FINGERPRINTS
+    args = cli.build_parser().parse_args(["doctor", "--list"])
+    assert args.func(args) == 0
+    assert len(capsys.readouterr().out.splitlines()) == len(FINGERPRINTS)
 
 
 # --------------------------------------------------------------------------
