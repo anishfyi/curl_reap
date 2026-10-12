@@ -40,9 +40,10 @@ Python 3.9+. Dependencies: `lxml`, `cssselect`, `cryptography`, `hpack`,
 no runtime downloads, and a readable pure-Python engine a maintainer can
 adapt the day a browser changes its hello.
 
-> **Release status:** 2.0.0 is the current release. Until the wheel is on
-> PyPI, install from the git branch:
-> `pip install "curl_reap @ git+https://github.com/anishfyi/curl_reap@feat/native-transport-2.0"`
+> **Release status:** 2.0.0 is on `main` but not tagged or on PyPI yet (the
+> latest release is 1.1.0, and PyPI still serves 0.2.2). Until it is, install
+> from `main`:
+> `pip install "curl_reap @ git+https://github.com/anishfyi/curl_reap@main"`
 
 Optional extras when you want more:
 
