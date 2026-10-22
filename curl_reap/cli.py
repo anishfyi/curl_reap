@@ -226,8 +226,8 @@ def _cmd_worker(args):
 def build_parser():
     p = argparse.ArgumentParser(prog="reap", description="reap the web from the shell")
     p.add_argument("--http2", action="store_true",
-                   help="negotiate HTTP/2 when the server offers it (needs "
-                        "the h2 extra)")
+                   help="no-op kept for compatibility: HTTP/2 is negotiated "
+                        "by default since 2.0")
     p.add_argument("--impersonate", default=None,
                    help="versioned browser target, e.g. chrome124, firefox133, "
                         "safari17_0 (overrides --profile; best-effort)")

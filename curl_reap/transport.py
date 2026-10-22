@@ -438,21 +438,28 @@ class _BodyStream:
         self._decoder = decoder
         self._pending = bytearray()
         self._reusable = reusable
-        self._closed = False
+        self._eof = False
+        self._chunk_left = 0           # bytes still unread in the current chunk
 
     def read(self, n=65536):
-        if self._closed or n <= 0:
+        """Up to ``n`` decoded bytes; b"" once the body is complete or closed."""
+        if n <= 0:
             return b""
-        while not self._pending:
-            if self._closed:
-                return b""
+        while not self._pending and not self._eof:
+            if self._conn is None:
+                self._eof = True
+                break
             wire = self._next_wire_chunk(n)
-            if self._decoder is not None:
-                out = self._decoder(wire)
+            if wire:
+                out = self._decoder.feed(wire) if self._decoder is not None else wire
                 if out:
                     self._pending += out
-            elif wire:
-                self._pending += wire
+            if self._conn is None:  # _finish ran: the whole body has been read
+                if self._decoder is not None:
+                    tail = self._decoder.finish()  # flushes, and catches truncation
+                    if tail:
+                        self._pending += tail
+                self._eof = True
         result = bytes(self._pending[:n])
         del self._pending[:n]
         return result
@@ -472,6 +479,12 @@ class _BodyStream:
                 self._finish()
             return data
         if self._mode == "close":
+            buffered = conn.reader.buffer
+            if buffered:
+                # body bytes that arrived together with the head
+                data = bytes(buffered[:n])
+                del buffered[:n]
+                return data
             try:
                 data = conn.sock.recv(max(n, _RECV_SIZE))
             except (OSError, ssl.SSLError) as exc:
@@ -482,43 +495,45 @@ class _BodyStream:
         return self._next_chunked(conn, n)
 
     def _next_chunked(self, conn, n):
+        """Up to ``n`` bytes of chunk data; a large chunk is read across calls,
+        so memory stays bounded by ``n`` whatever size the server's chunks are."""
         reader = conn.reader
-        line = reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
-        size_text = line.split(b";", 1)[0].strip()
-        try:
-            size = int(size_text, 16)
-        except ValueError:
-            raise ChunkedEncodingError(
-                "invalid chunk size %r" % size_text.decode("latin-1", "replace"))
-        if size < 0:
-            raise ChunkedEncodingError("invalid negative chunk size")
-        if size == 0:
-            while True:  # trailers are consumed, never merged into headers
-                trailer = reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
-                if not trailer:
-                    self._finish()
-                    return b""
-                if b":" not in trailer:
-                    raise ChunkedEncodingError("malformed HTTP trailer")
-        data = reader.read_exact(min(size, n))
-        if len(data) < size:
-            # the rest of the chunk waits in the buffer; next call reads it
-            rest = reader.read_exact(size - len(data))
-            return data + rest
-        if reader.read_exact(2) != b"\r\n":
+        if self._chunk_left == 0:
+            line = reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
+            size_text = line.split(b";", 1)[0].strip()
+            try:
+                size = int(size_text, 16)
+            except ValueError:
+                raise ChunkedEncodingError(
+                    "invalid chunk size %r" % size_text.decode("latin-1", "replace"))
+            if size < 0:
+                raise ChunkedEncodingError("invalid negative chunk size")
+            if size == 0:
+                while True:  # trailers are consumed, never merged into headers
+                    trailer = reader.read_until(b"\r\n", _MAX_HEADER_BYTES)[:-2]
+                    if not trailer:
+                        self._finish()
+                        return b""
+                    if b":" not in trailer:
+                        raise ChunkedEncodingError("malformed HTTP trailer")
+            self._chunk_left = size
+        data = reader.read_exact(min(self._chunk_left, max(1, n)))
+        self._chunk_left -= len(data)
+        if self._chunk_left == 0 and reader.read_exact(2) != b"\r\n":
             raise ChunkedEncodingError("chunk data is not terminated by CRLF")
         return data
 
     def _finish(self):
-        self._closed = True
         conn, self._conn = self._conn, None
         if conn is not None:
             self._transport._release_stream(conn, self._reusable)
 
     def close(self):
-        if not self._closed and self._conn is not None:
-            self._closed = True
-            conn, self._conn = self._conn, None
+        """Abandon the rest of the body; an unfinished connection is not reused."""
+        self._eof = True
+        self._pending.clear()
+        conn, self._conn = self._conn, None
+        if conn is not None:
             self._transport._release_stream(conn, False)
 
 
@@ -758,6 +773,7 @@ class _Transport:
                 sock, backend, tls_infos = self._tls_wrap(
                     sock, host, port, proxy_parts, profile, verify, alpn,
                     connect_timeout, read_timeout, deadline, cert, use_native)
+            tls_infos = dict(tls_infos, tls_backend=backend)  # "native", "openssl" or "plain"
             selected = tls_infos.get("alpn")
             wants_h2 = "h2" in alpn and selected == "h2"
             if http_version in ("v2", "v2tls", "v2_prior_knowledge") and not wants_h2 \
@@ -1170,11 +1186,13 @@ class _Transport:
             return build(saved=saved), reusable, None
 
         if stream and not sink:
-            decoder = None
             try:
                 decoder = _StreamDecoder(headers.get("Content-Encoding"))
-            except (ValueError, ContentDecodingError):
-                decoder = None
+            except ValueError:
+                decoder = None  # identity: nothing to decode
+            except ContentDecodingError:
+                conn.close()    # never hand back still-compressed bytes as the body
+                raise
             if chunked:
                 mode, body_len = "chunked", 0
             elif length is not None:
@@ -1183,7 +1201,8 @@ class _Transport:
                 mode, body_len = "close", 0
                 reusable = False
             body_stream = _BodyStream(self, conn, mode, body_len, decoder, reusable)
-            return build(content=None), False, body_stream  # released by the stream
+            # the stream owns the connection from here and releases it when drained
+            return build(content=None, body_stream=body_stream), False, body_stream
 
         # buffered body with a cap
         if chunked:
@@ -1352,6 +1371,7 @@ class _Transport:
                                  deadline, cert=cert, http_version=http_version,
                                  debug=debug)
         reusable = False
+        streaming = False
         try:
             if debug:
                 logger.info(">%s %s %s HTTP/1.1", method.upper(), authority, target)
@@ -1391,11 +1411,10 @@ class _Transport:
                 logger.info("<HTTP %s %s", raw.status_code, raw.reason)
                 for name, value in raw.headers.multi_items():
                     logger.info("<%s: %s", name, value)
-            if body_stream is not None:
-                return raw  # stream owns the connection
+            streaming = body_stream is not None  # the stream releases the connection
             return raw
         finally:
-            if conn.h2 is None:
+            if conn.h2 is None and not streaming:
                 self._release(conn, reusable)
 
     def _h2_exchange(self, conn, method, scheme, host, port, authority, parts,
