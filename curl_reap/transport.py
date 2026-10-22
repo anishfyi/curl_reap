@@ -161,6 +161,15 @@ def _merge_headers(*sources):
     return merged
 
 
+def _h2_profile_headers(profile):
+    """The profile's captured HTTP/2 header set (lowercase names, browser order).
+    Profiles without one get their HTTP/1.1 headers lowercased, as browsers do."""
+    captured = getattr(profile, "h2_headers", None)
+    if captured is not None:
+        return captured
+    return tuple((name.lower(), value) for name, value in profile.headers)
+
+
 def _find_header(headers, name):
     lower = name.lower()
     for current, value in headers:
@@ -738,12 +747,7 @@ class _Transport:
     def _connect(self, scheme, host, port, proxy, profile, verify, timeout, deadline,
                  cert=None, http_version="v2", debug=False):
         key_backend = self.tls_backend
-        use_native = (
-            scheme == "https"
-            and self.tls_backend != "openssl"
-            and getattr(profile, "tls_template", None)
-            and self._native_available()
-        )
+        use_native = self._backend_for(scheme, profile, cert) == "native"
         if use_native:
             key_backend = "native"
         elif scheme == "https":
@@ -995,13 +999,15 @@ class _Transport:
         context = create_ssl_context(profile, verify=verify, alpn=alpn)
         if cert:
             # the reference client style: a path, or (cert, key[, key_password]).
-            if isinstance(cert, str):
-                cert, key, password = cert, None, None
+            if isinstance(cert, (str, bytes, os.PathLike)):
+                cert_file, key, password = cert, None, None
             else:
-                cert, key = cert[0], cert[1]
-                password = cert[2] if len(cert) > 2 else None
+                parts = tuple(cert)
+                cert_file = parts[0]
+                key = parts[1] if len(parts) > 1 else None
+                password = parts[2] if len(parts) > 2 else None
             try:
-                context.load_cert_chain(cert, key, password)
+                context.load_cert_chain(cert_file, key, password)
             except (OSError, ssl.SSLError) as exc:
                 try:
                     sock.close()
@@ -1303,15 +1309,30 @@ class _Transport:
                 raise ChunkedEncodingError("chunk data is not terminated by CRLF")
 
     # -- request execution -----------------------------------------------------
+    def _backend_for(self, scheme, profile, cert):
+        """Which engine a connection uses: "native", "openssl" or "plain".
+
+        The native engine cannot present a client certificate (it answers a
+        CertificateRequest with an empty Certificate), so a request with
+        ``cert`` goes through OpenSSL under ``tls="auto"`` and is refused
+        under ``tls="native"`` rather than silently sent without it.
+        """
+        if scheme != "https":
+            return "plain"
+        if cert:
+            if self.tls_backend == "native":
+                raise ValueError(
+                    "tls='native' cannot send a client certificate; use tls='auto' "
+                    "(which switches to OpenSSL for cert= requests) or tls='openssl'")
+            return "openssl"
+        if (self.tls_backend != "openssl"
+                and getattr(profile, "tls_template", None)
+                and self._native_available()):
+            return "native"
+        return "openssl"
+
     def _route_key(self, scheme, host, port, proxy, profile, verify, cert=None):
-        backend = "plain"
-        if scheme == "https":
-            if (self.tls_backend != "openssl"
-                    and getattr(profile, "tls_template", None)
-                    and self._native_available()):
-                backend = "native"
-            else:
-                backend = "openssl"
+        backend = self._backend_for(scheme, profile, cert)
         return self._connection_key(scheme, host, port, proxy, profile, verify, backend, cert)
 
     def _single_request(self, method, url, profile, custom_headers, body,
@@ -1343,13 +1364,18 @@ class _Transport:
             token = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
             automatic.append(("Authorization", "Basic " + token))
 
-        headers = _merge_headers((("Host", authority),), profile.headers, custom_headers)
-        if content_type and _find_header(headers, "Content-Type") is None:
-            headers = _merge_headers(headers, (("Content-Type", content_type),))
-        if body or method.upper() in ("POST", "PUT", "PATCH"):
-            headers = _merge_headers(headers, (("Content-Length", str(len(body))),))
-        if automatic:
-            headers = _merge_headers(headers, automatic)
+        def assemble(*base):
+            """Profile headers, then the caller's, then what the request implies."""
+            merged = _merge_headers(*base, custom_headers)
+            if content_type and _find_header(merged, "Content-Type") is None:
+                merged = _merge_headers(merged, (("Content-Type", content_type),))
+            if body or method.upper() in ("POST", "PUT", "PATCH"):
+                merged = _merge_headers(merged, (("Content-Length", str(len(body))),))
+            if automatic:
+                merged = _merge_headers(merged, automatic)
+            return merged
+
+        headers = assemble((("Host", authority),), profile.headers)
 
         target = _request_target(parts)
         proxy_parts = None
@@ -1378,10 +1404,12 @@ class _Transport:
                 for name, value in headers:
                     logger.info(">%s: %s", name, value)
             if conn.h2 is not None:
+                # Browsers send a different header set over HTTP/2 (Chrome and Safari
+                # add ``priority``): use the target's captured h2 set, not h1 lowercased.
                 try:
                     return self._h2_exchange(conn, method, scheme, host, port, authority,
-                                             parts, headers, body, sink, max_body, deadline,
-                                             debug)
+                                             parts, assemble(_h2_profile_headers(profile)),
+                                             body, sink, max_body, deadline, debug)
                 finally:
                     # alive h2 connections return to the pool; dead ones GOAWAY-closed
                     self._release(conn, conn.h2 is not None and conn.h2.alive)

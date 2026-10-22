@@ -88,6 +88,10 @@ class H2Handler:
                         flat = dict(event.headers)
                         body = ("h2:" + flat.get("user-agent",
                                                  "none")).encode()
+                        if flat[":path"] == "/headers":
+                            # echo the regular headers exactly as received, in order
+                            body = "\n".join("%s: %s" % (n, v) for n, v in event.headers
+                                              if not n.startswith(":")).encode("latin-1")
                         sid = event.stream_id
                         self.conn.send_headers(sid, [
                             (b":status", b"200"),
@@ -202,3 +206,33 @@ def test_http2_on_by_default_and_opt_out(h2_base):
     with curl_reap.Session(http2=False, verify=str(ca)) as s:
         r = s.get(base + "/x")
         assert r.raw.http_version != "HTTP/2"
+
+
+def _received(response):
+    return [tuple(line.split(": ", 1)) for line in response.text.splitlines()]
+
+
+@pytest.mark.parametrize("target", ["chrome150", "safari2601", "firefox147"])
+def test_h2_sends_the_targets_captured_h2_header_set(h2_base, target):
+    # Over HTTP/2 browsers send a different set than over HTTP/1.1: Chrome and
+    # Safari add "priority: u=0, i" (Safari before accept-encoding). 2.0.0 sent
+    # the HTTP/1.1 set lowercased, so h2 traffic lacked the header.
+    from curl_reap.tls import resolve_profile
+    base, ca = h2_base
+    with curl_reap.Session(verify=str(ca)) as s:
+        r = s.get(base + "/headers", impersonate=target)
+    assert r.raw.http_version == "HTTP/2"
+    assert _received(r) == list(resolve_profile(target).h2_headers)
+
+
+def test_h2_header_overrides_keep_the_browser_order(h2_base):
+    from curl_reap.tls import resolve_profile
+    base, ca = h2_base
+    with curl_reap.Session(verify=str(ca)) as s:
+        r = s.get(base + "/headers", impersonate="chrome150",
+                  headers={"User-Agent": "custom/1.0", "X-Extra": "1"})
+    got = _received(r)
+    names = [n for n, _ in resolve_profile("chrome150").h2_headers]
+    assert [n for n, _ in got] == names + ["x-extra"]
+    assert dict(got)["user-agent"] == "custom/1.0"
+    assert dict(got)["priority"] == "u=0, i"

@@ -26,7 +26,7 @@ priority and HPACK. Measured JA4, ja4_r, peetprint and Akamai h2 fingerprints
 match the captured browsers for all 53 targets. Prove it on your own machine:
 
 ```bash
-reap doctor chrome     # or firefox147, safari2601, edge142, tor, ...
+reap doctor chrome     # or firefox147, safari2601, edge101, tor, ...
 ```
 
 ## Install
