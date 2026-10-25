@@ -1,4 +1,4 @@
-# curl_reap baseline benchmark
+# curl_reap 2.0 benchmark
 
 Date: 2026-10-11. Machine: Apple M3 Pro (11 cores, macOS-26.3-arm64-arm-64bit). Python 3.12.12, OpenSSL 3.6.5 29 Sep 2026.
 
@@ -6,7 +6,7 @@ Libraries: curl_reap 2.0.0, curl_cffi 0.16.3 (libcurl libcurl/8.21.0-IMPERSONATE
 
 Method: every server runs in a thread of the benchmark process on 127.0.0.1; no external network. 20 warm-up requests, then 3 timed runs per scenario; the table shows the median of each metric across runs. TLS verification: self-signed ECDSA P-256 CA cert path. TLS session tickets on the server: True. HTML body 20480 bytes (4828 bytes gzip). Large body 5242880 bytes identity. curl_reap uses Session(retries=0, verify=...); curl_cffi uses requests.Session(verify=...) with its default thread-local curl handles; http.client uses one connection per thread with manual gzip decoding and is the floor reference. bad=N marks responses whose status or decoded length did not match.
 
-Reproduce: `.venv/bin/python bench/bench.py --out bench/baseline.json --md bench/BASELINE.md`
+Reproduce: `.venv/bin/python bench/bench.py --out bench/after-2.0.json --md bench/AFTER-2.0.md`
 
 | Scenario | Metric | curl_reap | curl_cffi | http.client | reap / cffi |
 |---|---|---|---|---|---|

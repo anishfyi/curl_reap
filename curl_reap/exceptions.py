@@ -1,6 +1,6 @@
 """Exception hierarchy for curl_reap.
 
-The names and numeric codes mirror ``the reference client.requests.exceptions`` so code
+The names and numeric codes mirror the reference client's ``requests.exceptions`` so code
 written against the reference client keeps its ``except`` clauses, while every transport
 failure stays a :class:`TransportError` (the name curl_reap 1.x used) and an
 ``OSError``.  This module imports nothing from the package so the TLS and

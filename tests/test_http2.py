@@ -1,6 +1,7 @@
 """HTTP/2 transport tests: local ALPN-h2 TLS server + graceful fallback.
 
-Needs the optional h2 extra: pip install "curl-reap[h2]".
+Needs hyper-h2 as the test server (pip install h2; the h2 extra is an empty
+alias since 2.0) and the openssl command to mint a throwaway localhost PKI.
 """
 import http.server
 from pathlib import Path

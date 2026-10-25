@@ -1,8 +1,10 @@
 """curl_reap: reap the web.
 
 Three pillars in one library:
-  1. Transport: ordered HTTP/1.1 over socket + ssl, with best-effort browser
-     family TLS/header profiles, retries, proxy rotation, caching, and async use.
+  1. Transport: a native TLS 1.3 client and built-in HTTP/2 that replay each
+     impersonate target's captured ClientHello, HTTP/2 framing and headers
+     (OpenSSL fallback for TLS-1.2-only servers), ordered HTTP/1.1, WebSocket,
+     retries, profile and proxy rotation, cookies, caching, and async use.
   2. Parsing: a fast lxml selector with parsel-style css/xpath, self-healing
      selectors, and one-call structured extraction (jsonld, meta, links, images,
      tables, markdown).

@@ -247,8 +247,9 @@ def build_parser():
                    help="no-op kept for compatibility: HTTP/2 is negotiated "
                         "by default since 2.0")
     p.add_argument("--impersonate", default=None,
-                   help="versioned browser target, e.g. chrome124, firefox133, "
-                        "safari17_0 (overrides --profile; best-effort)")
+                   help="impersonate target, e.g. chrome124, firefox133, safari17_0 "
+                        "(any name from 'reap doctor --list'; overrides --profile; "
+                        "not used by crawl)")
     p.add_argument("--profile", default="chrome", choices=["chrome", "firefox", "safari"],
                    help="TLS/header profile (default chrome)")
     p.add_argument("--rotate", choices=["random", "sequence"], help="rotate profiles")

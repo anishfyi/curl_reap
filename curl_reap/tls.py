@@ -8,7 +8,7 @@ pseudo-header order) and the small set of ``ssl.SSLContext`` knobs used when
 the native engine is unavailable.
 
 The registry data lives in the generated module :mod:`curl_reap._profiles_data`
-(``tools/gen_profiles.py`` builds it from the the reference client captures under
+(``tools/gen_profiles.py`` builds it from the reference client's captures under
 ``tools/h2_templates`` and ``tools/hello_templates``).  Every target name
 the reference browser-impersonation client accepts resolves here to the same concrete target, and its
 header sets are the ones the reference client sends for that target.  curl_reap 1.x
@@ -24,7 +24,7 @@ measured as the same JA4 and peetprint as the reference client.  :func:`create_s
 remains the best-effort fallback on the standard library ``ssl`` module: it
 can set the pre-TLS-1.3 cipher order, the minimum version, an ECDH curve
 hint and ALPN, and nothing else.  The transport reports which path a
-connection used (``Response.tls_backend``); when it says ``"openssl"`` the
+connection used (``Response.infos["tls_backend"]``); when it says ``"openssl"`` the
 TLS fingerprint is OpenSSL's, only the HTTP layer is the browser's.
 """
 from __future__ import annotations
@@ -313,13 +313,13 @@ def _version_number(text: str) -> Optional[float]:
 
 
 def _profile_from_fingerprint(spec: Any) -> Profile:
-    """Map a the reference client ``Fingerprint`` (or a dict shaped like one) to the nearest target."""
+    """Map a reference-client ``Fingerprint`` (or a dict shaped like one) to the nearest target."""
     client = _fp_field(spec, "client").lower()
     family = _FP_CLIENT_FAMILY.get(client)
     if family is None:
         raise ImpersonateError(
-            "no impersonate target for client %r; curl_reap knows %s (the the reference client "
-            "clients brave, opera, samsung, okhttp and the app web views have no "
+            "no impersonate target for client %r; curl_reap knows %s (the reference client's "
+            "brave, opera, samsung, okhttp and app web view clients have no "
             "captured fingerprint)" % (client or "", ", ".join(FAMILIES)))
     platform = _FP_PLATFORM.get(_fp_field(spec, "os").lower().replace(" ", ""))
     wanted = _version_number(_fp_field(spec, "client_version"))
@@ -352,7 +352,7 @@ def resolve_profile(profile: Union[str, Profile, Mapping[str, Any], Any]) -> Pro
     """Return a concrete :class:`Profile`.
 
     Accepts a registry name (case-insensitive, underscore and dot tolerant),
-    a :class:`Profile`, or a the reference client style fingerprint: a dict or object
+    a :class:`Profile`, or a reference-client-style fingerprint: a dict or object
     with ``client``, ``client_version`` and ``os`` fields, mapped to the
     nearest captured target.  Unknown names raise
     :class:`UnknownProfileError` (an ``ImpersonateError`` and a ``ValueError``).

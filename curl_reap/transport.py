@@ -140,8 +140,10 @@ def _header_items(headers):
 def _merge_headers(*sources):
     """Case-insensitive last-wins merge keeping deterministic position.
 
-    A ``None`` value deletes the header everywhere it appeared (dropping a
-    profile header for one request).
+    A ``None`` value deletes the header from every source merged before it.
+    ``Session`` merges its own headers with the request's before the profile
+    is known, so through the public API a ``None`` drops a session header,
+    not a profile header.
     """
     merged = []
     positions = {}

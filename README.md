@@ -23,7 +23,9 @@ browser's bytes exactly, from its own TLS 1.3 engine: cipher order, extension
 order and GREASE, post-quantum X25519MLKEM768 key shares, certificate
 compression, ALPS, ECH GREASE, padding - and per-browser HTTP/2 SETTINGS,
 priority and HPACK. Measured JA4, ja4_r, peetprint and Akamai h2 fingerprints
-match the captured browsers for all 53 targets. Prove it on your own machine:
+match the captured browsers for all 53 captured target names (38 browser
+builds plus 15 aliases captured under their own names). Prove it on your own
+machine:
 
 ```bash
 reap doctor chrome     # or firefox147, safari2601, edge101, tor, ...
@@ -36,14 +38,13 @@ pip install curl_reap
 ```
 
 Python 3.9+. Dependencies: `lxml`, `cssselect`, `cryptography`, `hpack`,
-`brotli` - all shipping wheels for every platform, no compiled curl binding,
+`brotli` - all shipping wheels for common platforms, no compiled curl binding,
 no runtime downloads, and a readable pure-Python engine a maintainer can
 adapt the day a browser changes its hello.
 
-> **Release status:** 2.0.0 is on `main` but not tagged or on PyPI yet (the
-> latest release is 1.1.0, and PyPI still serves 0.2.2). Until it is, install
-> from `main`:
-> `pip install "curl_reap @ git+https://github.com/anishfyi/curl_reap@main"`
+> **Versions:** 2.0.0 is the first PyPI release since 0.2.2, which was still
+> built on curl_cffi. 1.0.0 and 1.1.0 were GitHub releases only. Check
+> `reap.__version__` after installing.
 
 Optional extras when you want more:
 
@@ -119,13 +120,13 @@ Codes for curl_reap users: `CURLREAP35` for 35% off mobile and residential proxi
 
 ## Why curl_reap
 
-- **Get past the front door.** Stock Python clients are fingerprinted as bots in seconds. curl_reap 2.0 ships its own TLS 1.3 engine and HTTP/2 framing that reproduce a real browser's handshake bytes exactly - cipher order, extension order and GREASE, post-quantum key shares, per-browser SETTINGS and HPACK - for 53 captured targets. Rotation pools advance both profile and proxy across retries.
+- **Get past the front door.** Stock Python clients are fingerprinted as bots in seconds. curl_reap 2.0 ships its own TLS 1.3 engine and HTTP/2 framing that reproduce a real browser's handshake bytes exactly - cipher order, extension order and GREASE, post-quantum key shares, per-browser SETTINGS and HPACK - for 38 captured browser builds behind 79 target names. Rotation pools advance both profile and proxy across retries.
 - **Survive markup changes.** Selectors heal themselves: when a site renames a class, `find_similar` and adaptive relocation re-find the element from a saved signature.
 - **Skip the parsing boilerplate.** One call gives you JSON-LD, meta tags, links, images, tables, and readable markdown.
 - **Crawl without wiring framework-sized machinery.** Spiders, priorities, per-domain AutoThrottle, robots.txt with Crawl-delay, sitemap discovery, dedup, and jsonl/csv/sqlite pipelines behind one `reap.run()` call.
 - **Stay light.** No compiled curl fork, no runtime binary downloads, no framework lock-in. If you outgrow it, every piece is importable standalone.
 
-Honest limits: servers that only speak TLS 1.2 fall back to an OpenSSL-shaped hello (the response says so in `infos["tls_backend"]`); HTTP/3 (QUIC) is not implemented. curl_reap does not solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services. Respect robots.txt, terms, and the law: [LEGAL.md](LEGAL.md).
+Honest limits: servers that only speak TLS 1.2 fall back to an OpenSSL-shaped hello (the response says so in `infos["tls_backend"]`), and that fallback cannot run through an `https://` proxy (SOCKS and `http://` proxies work); HTTP/3 (QUIC) is not implemented. curl_reap does not solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services. Respect robots.txt, terms, and the law: [LEGAL.md](LEGAL.md).
 
 ## What's in one install
 
@@ -148,7 +149,7 @@ The transport keeps HTTP-level state correct so long crawls don't drift:
 - **Cookies** are scoped by `(domain, path, name)`: host-only cookies never reach subdomains, `Domain` attributes are accepted only for the origin host or a parent (foreign and IP-literal domains are dropped), paths match on real boundaries (`/app` never leaks to `/apple`), `Max-Age=0` deletes the exact scope, and `CookieJar.get_dict()` is a documented lossy flattening for compatibility. Full public-suffix validation is not implemented.
 - **Redirects** strip `Authorization`, explicit `Cookie`, `Proxy-Authorization` and `Host` whenever the origin (scheme + host + effective port) changes, so credentials cannot leak across hosts or an `https -> http` downgrade; `Response.history` exposes the redirect chain as Responses.
 - **`Session(url_policy=callable)`** is consulted before every outgoing URL - the initial request (params applied, cache lookups included) and each redirect hop - before a socket is touched. A falsy return raises `URLPolicyError`. This is the origin-confinement seam the private service uses; it is not a complete egress firewall (see below).
-- **`Session(sticky=True)`** pins one profile/proxy for the session's life; retries and 4xx signals never rotate a sticky route. `RetryPolicy(allowed_methods=...)` gates which methods replay - POST/PATCH are never retried unless you opt in - and `Retry-After` is honored verbatim rather than clamped to `max_backoff`.
+- **`Session(sticky=True)`** pins one profile/proxy for the session's life; retries and 4xx signals never rotate a sticky route. `RetryPolicy(allowed_methods=...)` gates which methods replay - POST/PATCH are never retried unless you opt in - and `Retry-After` is honored rather than clamped to `max_backoff` (values above 24 hours are capped at 24 hours).
 - **`Response.block_reason`** reports `rate_limited` (429), `proxy_auth_required` (407), `forbidden` (403), or `challenge` when the body heuristically looks like an interstitial. `render_if_empty` only renders successful hollow pages - it does not execute or retry challenge interstitials. JS rendering via `reap.render` / `BrowserSession` is for ordinary JavaScript-heavy pages on sites you are allowed to fetch; it is not a challenge bypass.
 
 `BrowserSession` (optional `js` extra) keeps one browser/context/page alive across `goto()` calls so cookies and storage persist, reports the real navigation status and final URL (never a fabricated 200), optionally attaches to an authorized remote browser via `cdp_url`, and can route-gate document and subresource requests through the same `url_policy`.
@@ -224,21 +225,21 @@ Issues and pull requests are welcome at [github.com/anishfyi/curl_reap](https://
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,server]"
 python -m pytest tests/ -q
 ```
 
-Install `.[dev,h2]` to include the HTTP/2 tests. Those tests spin a real
-TLS server and expect a throwaway certificate at `/tmp/h2cert/{cert,key}.pem`;
-generate one locally (e.g. `openssl req -x509 -newkey rsa:2048 -nodes
--keyout /tmp/h2cert/key.pem -out /tmp/h2cert/cert.pem -subj /CN=localhost
--days 7`) or those four tests skip/fail.
+The HTTP/2 tests in `tests/test_http2.py` and `tests/test_h2_connection.py`
+use hyper-h2 as the test server and skip without it: `pip install h2` to run
+them (the `h2` extra is an empty alias since 2.0). `tests/test_http2.py` also
+needs the `openssl` command, which it uses to mint a throwaway localhost
+certificate chain. Live network checks run only with `REAP_LIVE_TESTS=1`.
 
 ## Credits
 
 With thanks to the projects whose ideas this builds on:
 
-- **curl_cffi** by Yuriy Lexifi and contributors, for proving how far TLS impersonation can take a scraper. The 1.0 transport is written from scratch, but the inspiration is explicit.
+- **curl_cffi** by lexiforest and contributors, for proving how far TLS impersonation can take a scraper. curl_reap's transport is written from scratch, but the inspiration is explicit: the 2.0 browser templates were captured from curl_cffi 0.16.3, and target names follow its naming.
 - **Scrapy**, for the crawl-engine blueprint.
 - **Scrapling** and **parsel**, for self-healing selectors and css/xpath ergonomics.
 - **curl-impersonate** by lwthiker, the original browser-TLS-for-curl project.
