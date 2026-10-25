@@ -936,17 +936,14 @@ class _Transport:
                     sock.close()
                 except OSError:
                     pass
-                sock = self._create_connection(host, port, connect_timeout, deadline)
-                if proxy_parts is not None and proxy_parts.scheme.lower() in ("http", "https"):
-                    proxy_port = proxy_parts.port or 8080
-                    if proxy_parts.scheme.lower() == "https":
-                        raise TransportError(
-                            "TLS-1.2-only servers cannot be combined with an https proxy")
-                    tunnel_sock = self._create_connection(proxy_parts.hostname, proxy_port,
-                                                          connect_timeout, deadline)
-                    sock.close()
-                    sock = tunnel_sock
-                    self._connect_tunnel(sock, host, port, proxy_parts, connect_timeout, deadline)
+                if proxy_parts is not None and proxy_parts.scheme.lower() == "https":
+                    # The stdlib cannot run OpenSSL's TLS inside the proxy's
+                    # TLS. Fail before dialing anything: never go around the proxy.
+                    raise TransportError(
+                        "TLS-1.2-only servers cannot be combined with an https proxy")
+                # Re-dial the same way the first attempt went: directly, through
+                # the SOCKS proxy, or through a new HTTP CONNECT tunnel.
+                sock = self._reconnect_plain(host, port, proxy_parts, connect_timeout, deadline)
                 # OpenSSL path below re-wraps the fresh socket
                 try:
                     return self._openssl_wrap(sock, host, profile, verify, alpn,
@@ -973,7 +970,12 @@ class _Transport:
                                   connect_timeout, read_timeout, deadline, cert)
 
     def _reconnect_plain(self, host, port, proxy_parts, connect_timeout, deadline):
-        """Re-dial after the native engine failed on a TLS-1.3-capable server."""
+        """Re-dial for the OpenSSL path after the native handshake gave up.
+
+        Takes the same route as the first attempt (direct, through the SOCKS
+        proxy, or through a new CONNECT tunnel), so a fallback never leaves
+        from the machine's own address when a proxy is configured.
+        """
         try:
             if proxy_parts is None:
                 return self._create_connection(host, port, connect_timeout, deadline)
