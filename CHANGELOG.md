@@ -148,6 +148,9 @@ this release:
 ### Known limitations
 
 - No native TLS 1.2: TLS-1.2-only servers get an OpenSSL-shaped ClientHello.
+  That fallback offers only the X25519 group (`Profile.curve`), so a
+  TLS-1.2-only server with a P-256 ECDSA certificate fails the handshake;
+  servers with RSA certificates work.
 - An `https://` proxy works only on the native TLS path. The OpenSSL path
   (TLS-1.2-only servers, `cert=`, custom profiles without a template,
   `tls="openssl"`) fails through one; use an `http://` or SOCKS proxy there.
