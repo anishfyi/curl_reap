@@ -140,8 +140,10 @@ def _header_items(headers):
 def _merge_headers(*sources):
     """Case-insensitive last-wins merge keeping deterministic position.
 
-    A ``None`` value deletes the header everywhere it appeared (dropping a
-    profile header for one request).
+    A ``None`` value deletes the header from every source merged before it.
+    ``Session`` merges its own headers with the request's before the profile
+    is known, so through the public API a ``None`` drops a session header,
+    not a profile header.
     """
     merged = []
     positions = {}
@@ -814,7 +816,14 @@ class _Transport:
             raise
 
     def _alpn_for(self, profile, http_version):
-        if http_version == "v1":
+        """Offer only what this connection can speak.
+
+        A profile without an HTTP/2 spec (a hand-built ``Profile``) has no
+        browser HTTP/2 framing to send, so it offers ``http/1.1`` alone;
+        offering ``h2`` would let the server pick it and then receive
+        HTTP/1.1 bytes.
+        """
+        if http_version == "v1" or not getattr(profile, "h2_spec", None):
             return ("http/1.1",)
         return ("h2", "http/1.1")
 
@@ -936,17 +945,14 @@ class _Transport:
                     sock.close()
                 except OSError:
                     pass
-                sock = self._create_connection(host, port, connect_timeout, deadline)
-                if proxy_parts is not None and proxy_parts.scheme.lower() in ("http", "https"):
-                    proxy_port = proxy_parts.port or 8080
-                    if proxy_parts.scheme.lower() == "https":
-                        raise TransportError(
-                            "TLS-1.2-only servers cannot be combined with an https proxy")
-                    tunnel_sock = self._create_connection(proxy_parts.hostname, proxy_port,
-                                                          connect_timeout, deadline)
-                    sock.close()
-                    sock = tunnel_sock
-                    self._connect_tunnel(sock, host, port, proxy_parts, connect_timeout, deadline)
+                if proxy_parts is not None and proxy_parts.scheme.lower() == "https":
+                    # The stdlib cannot run OpenSSL's TLS inside the proxy's
+                    # TLS. Fail before dialing anything: never go around the proxy.
+                    raise TransportError(
+                        "TLS-1.2-only servers cannot be combined with an https proxy")
+                # Re-dial the same way the first attempt went: directly, through
+                # the SOCKS proxy, or through a new HTTP CONNECT tunnel.
+                sock = self._reconnect_plain(host, port, proxy_parts, connect_timeout, deadline)
                 # OpenSSL path below re-wraps the fresh socket
                 try:
                     return self._openssl_wrap(sock, host, profile, verify, alpn,
@@ -973,7 +979,12 @@ class _Transport:
                                   connect_timeout, read_timeout, deadline, cert)
 
     def _reconnect_plain(self, host, port, proxy_parts, connect_timeout, deadline):
-        """Re-dial after the native engine failed on a TLS-1.3-capable server."""
+        """Re-dial for the OpenSSL path after the native handshake gave up.
+
+        Takes the same route as the first attempt (direct, through the SOCKS
+        proxy, or through a new CONNECT tunnel), so a fallback never leaves
+        from the machine's own address when a proxy is configured.
+        """
         try:
             if proxy_parts is None:
                 return self._create_connection(host, port, connect_timeout, deadline)

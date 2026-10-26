@@ -7,8 +7,9 @@ the audit is `docs/design/audit-2026-10-10.md`; the API parity study is
 
 ## Audit fix closure (2026-10-10 audit, closed in 2.0.0)
 
-Every P1 and P2 finding from the audit is closed; the P3 items marked
-**open** below are tracked deliberately.
+Every P1 finding and every P2 finding but one from the audit is closed. The
+P2 header-removal row and the P3 items marked **open** below are tracked
+deliberately.
 
 | Finding | Class | Status | Where |
 | --- | --- | --- | --- |
@@ -28,7 +29,7 @@ Every P1 and P2 finding from the audit is closed; the P3 items marked
 | No HTTP/1.1 size cap | P2 | **closed** | `max_body_bytes` (default 64 MiB) |
 | TLS handshake failures escape raw | P2 | **closed** | wrapped in `SSLError`/`ConnectTimeout` in `_connect` |
 | HEAD+303 rewritten to GET | P2 | **closed** | HEAD preserved on 303 |
-| headers={name: None} cannot drop a profile header | P2 | **closed** | `Headers` None semantics + `_merge_headers` |
+| headers={name: None} cannot drop a profile header | P2 | **open** | `_merge_headers` honors None, but `Session` merges session and request headers before the profile is applied, so None drops a session header only (documented in the 2.0.0 changelog) |
 | Retry-After: inf crashes; huge values sleep for real | P2 | **closed** | clamped to 24 h in `retry_after_seconds` |
 | close() never sends GOAWAY | P2 | **closed** | `_Connection.close` → `H2Connection.close` |
 | h2 download writes redirect body to sink | P2 | **closed** | sink gated to 2xx on both transports |
@@ -40,10 +41,23 @@ Every P1 and P2 finding from the audit is closed; the P3 items marked
 | P3 aio cancellation cannot stop the worker | P3 | **open** | documented: cancellation stops waiting, the timeout bounds the thread |
 | Public-suffix validation for cookie domains | P3 | **open** | documented in jar docstring |
 
+## Open issues found after the audit
+
+- The OpenSSL fallback offers only the X25519 group (`Profile.curve`), so a
+  TLS-1.2-only server with a P-256 ECDSA certificate fails the handshake;
+  servers with RSA certificates work. Pre-existing since 1.x; listed under
+  "Known limitations" in the 2.0.0 changelog.
+- `Profile.alpn_protocols` is validated but not read: the transport picks
+  ALPN itself (`h2` and `http/1.1` when the profile has an HTTP/2 spec,
+  `http/1.1` otherwise).
+
 ## Deliberate scope decisions
 
 - TLS 1.2-only servers use the OpenSSL fallback and the response says so
-  (`infos["tls_backend"] == "openssl"`); no native TLS 1.2.
+  (`infos["tls_backend"] == "openssl"`); no native TLS 1.2. The fallback
+  re-dials through the same proxy as the first attempt; it cannot run through
+  an `https://` proxy (no TLS inside TLS on the stdlib `ssl` module) and
+  fails before dialing anything there.
 - HTTP/3 (QUIC) raises `NotImplementedError` (`http_version="v3"`).
 - `perk=` is accepted and ignored with a warning (the hybrid post-quantum
   key share is automatic); the libcurl compatibility keywords are accepted
@@ -54,6 +68,25 @@ Every P1 and P2 finding from the audit is closed; the P3 items marked
 - The 1 ms pure-Python handshake cost on fresh connections is the design's
   accepted trade for readability and platform coverage; PSK resumption
   mitigates it where servers issue tickets.
+
+## Fixed after the 2.0 merge, before the 2.0.0 release
+
+- #30: `stream=True` over HTTP/1.1 returned no body; `infos["tls_backend"]`
+  was never set.
+- #33: `reap doctor` measured Chrome traffic for every target, failed the JA3
+  row for Chromium, skipped headers, rejected aliases and legacy names.
+- #34: HTTP/2 requests sent the HTTP/1.1 header set lowercased; client
+  certificates were sent empty under `tls="auto"`.
+- 2026-10-26: the TLS 1.2 OpenSSL fallback re-dialed the server directly,
+  bypassing a SOCKS or HTTP proxy (`tests/test_tls12_fallback_proxy.py`).
+- 2026-10-26: a hand-built `Profile` without an HTTP/2 spec offered `h2` and
+  then wrote HTTP/1.1 on an h2 connection (`tests/test_custom_profile_alpn.py`).
+
+## Verification snapshot (2026-10-26, release/2.0.0)
+
+- Full offline suite: 1452 passed, 21 skipped (live-gated, optional h2,
+  playwright, kyber-py and curl_cffi comparisons) on CPython 3.9.25, 3.12.12
+  and 3.13.12; 1487 passed, 19 skipped on 3.12 with hyper-h2 installed.
 
 ## Verification snapshot (2026-10-11)
 

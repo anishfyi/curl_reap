@@ -5,7 +5,7 @@ each header field is represented on the wire (indexed, literal with or
 without indexing, never indexed, Huffman or raw strings, static or dynamic
 name references) is part of what a server sees.  This encoder follows
 ``deflate_nv`` in nghttp2's ``lib/nghttp2_hd.c`` as verified against the
-captures in ``tools/h2_templates`` and the extra the reference client captures taken on
+captures in ``tools/h2_templates`` and the extra reference-client captures taken on
 2026-10-11:
 
 * A field whose name and value match a static entry is sent as an indexed
