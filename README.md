@@ -44,7 +44,7 @@ adapt the day a browser changes its hello.
 
 > **Versions:** 2.0.0 is the first PyPI release since 0.2.2, which was still
 > built on curl_cffi. 1.0.0 and 1.1.0 were GitHub releases only. Check
-> `reap.__version__` after installing.
+> `curl_reap.__version__` after installing.
 
 Optional extras when you want more:
 

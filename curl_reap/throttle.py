@@ -50,7 +50,8 @@ class AutoThrottle:
         """Hold off queued requests until ``seconds`` from now have passed.
 
         Used for server-driven back-off (Retry-After on 429/503): the value
-        is honored verbatim, not clamped to ``max_delay``.
+        is not clamped to ``max_delay`` (the engine passes it through
+        ``retry_after_seconds``, which caps it at 24 hours).
         """
         with self._lock:
             self._cooldown_until = max(self._cooldown_until,

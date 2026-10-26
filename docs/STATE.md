@@ -39,8 +39,17 @@ deliberately.
 | B2/B14/B15/B16/B20/B24/B26/B28/B30 fingerprint-table items | P1/P2 | **closed** | new registry + native engines |
 | P3 `_release/close` race; trailer injection; TE-without-chunked; Connection token lists; IDNA mismatches; h2 set-cookie multi; eager .text | P3 | **closed** | empty-buffer release rule; trailers consumed not merged; close-delimited TE; tokenised Connection; IDNA host keys; multi-value Set-Cookie kept; lazy text |
 | P3 aio cancellation cannot stop the worker | P3 | **open** | documented: cancellation stops waiting, the timeout bounds the thread |
-| OpenSSL fallback offers only X25519 (`Profile.curve`) | P2 | **open** | a TLS-1.2-only server with a P-256 ECDSA certificate fails the handshake; RSA-certificate servers work |
 | Public-suffix validation for cookie domains | P3 | **open** | documented in jar docstring |
+
+## Open issues found after the audit
+
+- The OpenSSL fallback offers only the X25519 group (`Profile.curve`), so a
+  TLS-1.2-only server with a P-256 ECDSA certificate fails the handshake;
+  servers with RSA certificates work. Pre-existing since 1.x; listed under
+  "Known limitations" in the 2.0.0 changelog.
+- `Profile.alpn_protocols` is validated but not read: the transport picks
+  ALPN itself (`h2` and `http/1.1` when the profile has an HTTP/2 spec,
+  `http/1.1` otherwise).
 
 ## Deliberate scope decisions
 
@@ -70,6 +79,8 @@ deliberately.
   certificates were sent empty under `tls="auto"`.
 - 2026-10-26: the TLS 1.2 OpenSSL fallback re-dialed the server directly,
   bypassing a SOCKS or HTTP proxy (`tests/test_tls12_fallback_proxy.py`).
+- 2026-10-26: a hand-built `Profile` without an HTTP/2 spec offered `h2` and
+  then wrote HTTP/1.1 on an h2 connection (`tests/test_custom_profile_alpn.py`).
 
 ## Verification snapshot (2026-10-26, release/2.0.0)
 
