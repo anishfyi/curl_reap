@@ -816,7 +816,14 @@ class _Transport:
             raise
 
     def _alpn_for(self, profile, http_version):
-        if http_version == "v1":
+        """Offer only what this connection can speak.
+
+        A profile without an HTTP/2 spec (a hand-built ``Profile``) has no
+        browser HTTP/2 framing to send, so it offers ``http/1.1`` alone;
+        offering ``h2`` would let the server pick it and then receive
+        HTTP/1.1 bytes.
+        """
+        if http_version == "v1" or not getattr(profile, "h2_spec", None):
             return ("http/1.1",)
         return ("h2", "http/1.1")
 

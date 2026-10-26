@@ -67,9 +67,12 @@ class Profile:
     without the libcurl ``Upgrade``/``HTTP2-Settings``/``Connection`` tell.
     ``h2_headers`` is the HTTP/2 set with lowercase names; ``None`` means
     "derive from ``headers``" (see :func:`profile_for_h2`).  ``tls_template``
-    and ``h2_spec`` are keys into the native engines' template tables;
-    ``None`` means the OpenSSL path and HTTP/1.1 only.  The remaining fields
-    feed :func:`create_ssl_context` on the fallback path.
+    and ``h2_spec`` are keys into the native engines' template tables: no
+    ``tls_template`` means the OpenSSL path, and no ``h2_spec`` means
+    HTTP/1.1 only (``h2`` is not offered in ALPN).  ``ciphers``, ``curve``
+    and ``minimum_version`` feed :func:`create_ssl_context` on the fallback
+    path; ``alpn_protocols`` is validated but not read, because the
+    transport offers only the protocols it can speak for the profile.
     """
 
     name: str

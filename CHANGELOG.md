@@ -74,7 +74,8 @@ upgrading.
 
 - Every P1 defect and all but one P2 defect from the 2026-10-10 transport
   audit (see `docs/design/audit-2026-10-10.md` and `docs/STATE.md` for the
-  itemized closure; the open one is under "Known limitations"): Partitioned/unknown cookie attributes, HTTP/2 bodies returned
+  itemized closure; the open one is under "Known limitations"):
+  Partitioned/unknown cookie attributes, HTTP/2 bodies returned
   compressed, h2 request bodies above 16 KB, pooled connections after
   GOAWAY, download bodies on error statuses, multi-member gzip, UTF-8
   redirect targets, torn cache entries, pool liveness and bounds,
@@ -88,8 +89,9 @@ upgrading.
   `Proxy-Authorization` and `Host`, including an `https` to `http`
   downgrade on the same host.
 
-Fixed during the 2.0.0 release cycle, after the 2.0 merge (#29) and before
-this release:
+Fixed during the 2.0.0 release cycle, in 2.0 code that no earlier release
+shipped (late commits in the 2.0 pull request #29, the follow-up pull
+requests #30, #33 and #34, and the release branch):
 
 - Pooled connections and TLS 1.3 resumption tickets are keyed by the full
   trust identity (`verify` value and client `cert`), so a ticket earned with
@@ -126,6 +128,10 @@ this release:
   opened and dropped before the tunnelled one. The fallback now reconnects
   the same way as the first attempt. With an `https://` proxy, which the
   OpenSSL path cannot run through, it fails before dialing anything.
+- A hand-built `Profile` (no HTTP/2 spec) offered `h2` in ALPN, so a server
+  that picked HTTP/2 received an HTTP/1.1 request and the request failed.
+  Such profiles now offer `http/1.1` only, as the `Profile` documentation
+  says; built-in targets are unchanged.
 
 ### Changed
 
