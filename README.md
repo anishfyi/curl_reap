@@ -5,15 +5,22 @@
   </picture></a>
 </p>
 
-# curl_reap
+<p align="center"><strong>Reap the web.</strong></p>
 
-**Reap the web.** One Python library for scraping: a browser-exact HTTP/TLS/HTTP-2 transport, self-healing selectors, structured extraction, and a concurrent crawl engine.
+<p align="center">
+  <a href="https://pypi.org/project/curl-reap/"><img alt="PyPI" src="https://img.shields.io/pypi/v/curl-reap?label=pypi&color=12130f"></a>
+  <a href="https://github.com/anishfyi/curl_reap/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/anishfyi/curl_reap/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/anishfyi/curl_reap/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-12130f"></a>
+</p>
 
-[![CI](https://github.com/anishfyi/curl_reap/actions/workflows/ci.yml/badge.svg)](https://github.com/anishfyi/curl_reap/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/curl-reap)](https://pypi.org/project/curl-reap/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f)](https://github.com/anishfyi/curl_reap/blob/main/LICENSE)
+<p align="center">
+  <a href="https://velofy.co/curl_reap/">Documentation</a> ·
+  <a href="https://velofy.co/curl_reap/quickstart/">Quickstart</a> ·
+  <a href="https://github.com/anishfyi/curl_reap/blob/main/CHANGELOG.md">Changelog</a> ·
+  <a href="https://github.com/anishfyi/curl_reap/releases">Releases</a>
+</p>
 
-**Documentation: [velofy.co/curl_reap](https://velofy.co/curl_reap/)**
+One Python library for scraping: a browser-exact HTTP/TLS/HTTP-2 transport, self-healing selectors, structured extraction, and a concurrent crawl engine.
 
 ## The wire is the fingerprint
 
