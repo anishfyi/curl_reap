@@ -11,7 +11,7 @@
 
 [![CI](https://github.com/anishfyi/curl_reap/actions/workflows/ci.yml/badge.svg)](https://github.com/anishfyi/curl_reap/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/curl-reap)](https://pypi.org/project/curl-reap/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f)](https://github.com/anishfyi/curl_reap/blob/main/LICENSE)
 
 **Documentation: [velofy.co/curl_reap](https://velofy.co/curl_reap/)**
 
@@ -126,7 +126,7 @@ Codes for curl_reap users: `CURLREAP35` for 35% off mobile and residential proxi
 - **Crawl without wiring framework-sized machinery.** Spiders, priorities, per-domain AutoThrottle, robots.txt with Crawl-delay, sitemap discovery, dedup, and jsonl/csv/sqlite pipelines behind one `reap.run()` call.
 - **Stay light.** No compiled curl fork, no runtime binary downloads, no framework lock-in. If you outgrow it, every piece is importable standalone.
 
-Honest limits: servers that only speak TLS 1.2 fall back to an OpenSSL-shaped hello (the response says so in `infos["tls_backend"]`), and that fallback cannot run through an `https://` proxy (SOCKS and `http://` proxies work); HTTP/3 (QUIC) is not implemented. curl_reap does not solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services. Respect robots.txt, terms, and the law: [LEGAL.md](LEGAL.md).
+Honest limits: servers that only speak TLS 1.2 fall back to an OpenSSL-shaped hello (the response says so in `infos["tls_backend"]`), and that fallback cannot run through an `https://` proxy (SOCKS and `http://` proxies work); HTTP/3 (QUIC) is not implemented. curl_reap does not solve CAPTCHAs, bypass logins or paywalls, or defeat anti-bot services. Respect robots.txt, terms, and the law: [LEGAL.md](https://github.com/anishfyi/curl_reap/blob/main/LEGAL.md).
 
 ## What's in one install
 
@@ -248,4 +248,4 @@ Built with AI hands: co-developed with **ox-alpha**, an AI agent whose makers ke
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/anishfyi/curl_reap/blob/main/LICENSE).
