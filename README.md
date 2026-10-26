@@ -167,7 +167,7 @@ The `Reaper` engine grew the knobs large crawls need: `collect_items=False` stre
 
 For a small private fleet, `pip install "curl-reap[server]"` adds a FastAPI service and a Redis-backed job queue (`curl_reap.service`, `curl_reap.jobs`).
 
-Keep every secret out of history and config files - store them once with [smbk](https://github.com/anishfyi/smbk) and inject them at run time:
+Keep every secret out of history and config files: store them once in a secrets vault and inject them at run time. The examples use `smbk`; any tool that sets environment variables for one command works the same way:
 
 ```bash
 smbk add REAP_API_KEY        # shared secret for the x-reap-key header
